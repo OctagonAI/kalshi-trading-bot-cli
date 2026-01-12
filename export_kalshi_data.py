@@ -2,7 +2,7 @@
 Kalshi Data Export Script
 
 Fetches all series, events, and markets from Kalshi API and exports them
-to 3 CSV files: browse_pages.csv, events.csv, and markets.csv.
+to 3 CSV files: markets.csv, events.csv, and contracts.csv.
 """
 
 import asyncio
@@ -230,9 +230,9 @@ class KalshiDataExporter:
         logger.info(f"Fetched {len(all_markets)} total markets from {page} pages")
         return all_markets
     
-    def build_browse_pages(self, series: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Build browse_pages from series data."""
-        browse_pages = []
+    def build_markets(self, series: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build markets (browse pages) from series data."""
+        markets = []
         
         # Track unique categories and tags
         categories: Set[str] = set()
@@ -253,7 +253,7 @@ class KalshiDataExporter:
         
         # Create category pages
         for category in sorted(categories):
-            browse_pages.append({
+            markets.append({
                 "name": "",  # octagon (empty)
                 "slug": "",  # octagon (empty)
                 "page_type": "",  # octagon (empty)
@@ -265,7 +265,7 @@ class KalshiDataExporter:
             
             # Create tag pages for this category
             for tag in sorted(category_tags.get(category, set())):
-                browse_pages.append({
+                markets.append({
                     "name": "",  # octagon (empty)
                     "slug": "",  # octagon (empty)
                     "page_type": "",  # octagon (empty)
@@ -275,8 +275,8 @@ class KalshiDataExporter:
                     "intro_richtext": "",  # octagon (empty)
                 })
         
-        logger.info(f"Built {len(browse_pages)} browse pages from {len(series)} series")
-        return browse_pages
+        logger.info(f"Built {len(markets)} markets (browse pages) from {len(series)} series")
+        return markets
     
     def format_settlement_sources(self, sources: List[Dict[str, Any]]) -> str:
         """Format settlement sources as 'Name | URL' separated by newlines."""
@@ -403,8 +403,8 @@ class KalshiDataExporter:
         logger.info(f"Built {len(rows)} event rows")
         return rows
     
-    def build_markets_csv_rows(self, markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Build markets CSV rows from markets data."""
+    def build_contracts_csv_rows(self, markets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Build contracts CSV rows from markets data."""
         rows = []
         
         for market in markets:
@@ -459,7 +459,7 @@ class KalshiDataExporter:
             
             rows.append(row)
         
-        logger.info(f"Built {len(rows)} market rows")
+        logger.info(f"Built {len(rows)} contract rows")
         return rows
     
     def write_csv(
@@ -502,15 +502,15 @@ class KalshiDataExporter:
             series_by_ticker = {s.get("ticker", ""): s for s in series}
             
             # Build CSV rows
-            browse_pages = self.build_browse_pages(series)
+            markets_rows = self.build_markets(series)
             events_rows = self.build_events_csv_rows(events, series_by_ticker)
-            markets_rows = self.build_markets_csv_rows(markets)
+            contracts_rows = self.build_contracts_csv_rows(markets)
             
             # Generate timestamp for filenames
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             # Define fieldnames for each CSV
-            browse_pages_fields = [
+            markets_fields = [
                 "name", "slug", "page_type", "parent_page",
                 "series_category_filter", "series_tag_filter", "intro_richtext"
             ]
@@ -548,7 +548,7 @@ class KalshiDataExporter:
                 "transparency_subtitle", "transparency_paragraph_richtext",
             ]
             
-            markets_fields = [
+            contracts_fields = [
                 # Core identity
                 "name", "market_ticker", "event_ticker", "event",
                 # Descriptive
@@ -565,9 +565,9 @@ class KalshiDataExporter:
             ]
             
             # Write CSV files
-            self.write_csv(f"browse_pages_{timestamp}.csv", browse_pages, browse_pages_fields)
-            self.write_csv(f"events_{timestamp}.csv", events_rows, events_fields)
             self.write_csv(f"markets_{timestamp}.csv", markets_rows, markets_fields)
+            self.write_csv(f"events_{timestamp}.csv", events_rows, events_fields)
+            self.write_csv(f"contracts_{timestamp}.csv", contracts_rows, contracts_fields)
             
             logger.info("Export completed successfully!")
             
