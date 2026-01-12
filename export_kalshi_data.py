@@ -343,7 +343,9 @@ class KalshiDataExporter:
             })
             
             # C) Denormalized Kalshi Series fields
-            series_tags = series.get("tags", [])
+            series_tags = series.get("tags") or []
+            settlement_sources = series.get("settlement_sources") or []
+            additional_prohibitions = series.get("additional_prohibitions") or []
             row.update({
                 "series_title": series.get("title", ""),
                 "series_category": series.get("category", ""),
@@ -351,14 +353,14 @@ class KalshiDataExporter:
                 "series_frequency": series.get("frequency", ""),
                 "contract_url": series.get("contract_url", ""),
                 "contract_terms_url": series.get("contract_terms_url", ""),
-                "settlement_sources_raw": self.format_settlement_sources(series.get("settlement_sources", [])),
+                "settlement_sources_raw": self.format_settlement_sources(settlement_sources),
                 "fee_type": series.get("fee_type", ""),
-                "fee_multiplier": str(series.get("fee_multiplier", "")),
-                "additional_prohibitions_raw": "\n".join(series.get("additional_prohibitions", [])),
+                "fee_multiplier": str(series.get("fee_multiplier") or ""),
+                "additional_prohibitions_raw": "\n".join(additional_prohibitions),
             })
             
             # D) Kalshi Event metadata (optional endpoint - may not be in response)
-            event_metadata = event.get("metadata", {})
+            event_metadata = event.get("metadata") or {}
             row.update({
                 "event_image_url": event_metadata.get("image_url", "") if isinstance(event_metadata, dict) else "",
                 "featured_image_url": event_metadata.get("featured_image_url", "") if isinstance(event_metadata, dict) else "",
@@ -436,14 +438,15 @@ class KalshiDataExporter:
             })
             
             # Lifecycle & status
+            settlement_timer = market.get("settlement_timer_seconds")
             row.update({
                 "created_time": market.get("created_time", ""),
                 "open_time": market.get("open_time", ""),
                 "close_time": market.get("close_time", ""),
                 "latest_expiration_time": market.get("latest_expiration_time", ""),
-                "settlement_timer_seconds": str(market.get("settlement_timer_seconds", "")),
+                "settlement_timer_seconds": str(settlement_timer) if settlement_timer is not None else "",
                 "status": market.get("status", ""),
-                "can_close_early": str(market.get("can_close_early", False)).lower(),
+                "can_close_early": str(market.get("can_close_early") or False).lower(),
                 "result": market.get("result", ""),
             })
             
@@ -461,7 +464,7 @@ class KalshiDataExporter:
             })
             
             # Rules & display
-            market_metadata = market.get("metadata", {})
+            market_metadata = market.get("metadata") or {}
             row.update({
                 "rules_primary": market.get("rules_primary", ""),
                 "rules_secondary": market.get("rules_secondary", ""),
