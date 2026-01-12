@@ -133,7 +133,7 @@ class KalshiDataExporter:
         logger.info(f"Fetched {len(all_series)} active series from {page} pages")
         return all_series
     
-    async def fetch_all_events(self) -> List[Dict[str, Any]]:
+    async def fetch_all_events(self, with_nested_markets: bool = False) -> List[Dict[str, Any]]:
         """Fetch all open (active) events from Kalshi API with pagination."""
         all_events = []
         cursor = None
@@ -145,7 +145,7 @@ class KalshiDataExporter:
                 params = {
                     "limit": 100,
                     "status": "open",  # Only fetch open/active events
-                    "with_nested_markets": "false"  # Don't need nested markets for events
+                    "with_nested_markets": "true" if with_nested_markets else "false"
                 }
                 
                 if cursor:
@@ -502,9 +502,21 @@ class KalshiDataExporter:
             logger.info(f"Using API: {self.base_url}")
             
             # Fetch all data
+            # Note: We fetch events WITH nested markets to ensure consistency
+            # This guarantees all markets belong to open events
             series = await self.fetch_all_series()
-            events = await self.fetch_all_events()
-            markets = await self.fetch_all_markets()
+            events_with_markets = await self.fetch_all_events(with_nested_markets=True)
+            
+            # Extract markets from events (ensures consistency - all markets belong to open events)
+            markets = []
+            for event in events_with_markets:
+                event_markets = event.get("markets", [])
+                markets.extend(event_markets)
+            
+            logger.info(f"Extracted {len(markets)} markets from {len(events_with_markets)} open events")
+            
+            # Use events without the nested markets field for CSV export
+            events = [{k: v for k, v in e.items() if k != "markets"} for e in events_with_markets]
             
             # Build series lookup
             series_by_ticker = {s.get("ticker", ""): s for s in series}
