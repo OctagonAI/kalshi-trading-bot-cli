@@ -4,10 +4,10 @@ Kalshi Data Export Script
 Fetches active series, open events, and open markets from Kalshi API and exports them
 to 3 CSV files: markets.csv, events.csv, and contracts.csv.
 
-Only active/open data is fetched (no expired or settled items):
-- Series: status=active
-- Events: status=open
-- Markets: status=open
+Only active/open data is exported (no expired or settled items):
+- Events: fetched with status=open filter
+- Markets: extracted from open events (via with_nested_markets=true)
+- Series: filtered to only those with at least one open event
 """
 
 import asyncio
@@ -82,7 +82,11 @@ class KalshiDataExporter:
             raise
     
     async def fetch_all_series(self) -> List[Dict[str, Any]]:
-        """Fetch all active series from Kalshi API with pagination."""
+        """Fetch all series from Kalshi API with pagination.
+        
+        Note: Series are filtered client-side to only include those with open events,
+        since the API's status filter is unreliable.
+        """
         all_series = []
         cursor = None
         page = 1
@@ -92,7 +96,7 @@ class KalshiDataExporter:
                 headers = await self._get_headers("GET", "/trade-api/v2/series")
                 params = {
                     "limit": 100,
-                    "status": "active",  # Only fetch active series
+                    # Note: status filter removed - we filter client-side based on open events
                 }
                 
                 if cursor:
@@ -130,7 +134,7 @@ class KalshiDataExporter:
                 logger.error(f"Error fetching series page {page}: {e}")
                 break
         
-        logger.info(f"Fetched {len(all_series)} active series from {page} pages")
+        logger.info(f"Fetched {len(all_series)} total series from {page} pages (will filter to active)")
         return all_series
     
     async def fetch_all_events(self, with_nested_markets: bool = False) -> List[Dict[str, Any]]:
@@ -504,7 +508,6 @@ class KalshiDataExporter:
             # Fetch all data
             # Note: We fetch events WITH nested markets to ensure consistency
             # This guarantees all markets belong to open events
-            series = await self.fetch_all_series()
             events_with_markets = await self.fetch_all_events(with_nested_markets=True)
             
             # Extract markets from events (ensures consistency - all markets belong to open events)
@@ -517,6 +520,15 @@ class KalshiDataExporter:
             
             # Use events without the nested markets field for CSV export
             events = [{k: v for k, v in e.items() if k != "markets"} for e in events_with_markets]
+            
+            # Get unique series tickers from open events
+            active_series_tickers = set(e.get("series_ticker", "") for e in events if e.get("series_ticker"))
+            logger.info(f"Found {len(active_series_tickers)} unique series with open events")
+            
+            # Fetch all series (for metadata) then filter to only those with open events
+            all_series = await self.fetch_all_series()
+            series = [s for s in all_series if s.get("ticker", "") in active_series_tickers]
+            logger.info(f"Filtered to {len(series)} active series (from {len(all_series)} total)")
             
             # Build series lookup
             series_by_ticker = {s.get("ticker", ""): s for s in series}
