@@ -17,6 +17,8 @@ dependencies = [
     "rich>=13.0.0",
     "cryptography>=41.0.0",
     "openai>=1.0.0",
+    "google-genai>=1.0.0",
+    "exa-py>=1.0.0",
 ]
 
 [project.optional-dependencies]
