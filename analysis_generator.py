@@ -239,11 +239,18 @@ class AnalysisGenerator:
                 logger.error(f"Failed to initialize Exa client: {e}")
         return self._exa_client
     
-    async def crawl_kalshi_page(self, event_ticker: str) -> Dict[str, str]:
+    async def crawl_kalshi_page(
+        self,
+        series_ticker: str,
+        series_title: str,
+        event_ticker: str
+    ) -> Dict[str, str]:
         """Crawl Kalshi event page using Exa to get contract rules and discussion.
         
         Args:
-            event_ticker: The Kalshi event ticker (e.g., "KXBTC-25JAN13")
+            series_ticker: The series ticker (e.g., "KXRAMPBREX")
+            series_title: The series title (e.g., "Ramp v Brex")
+            event_ticker: The event ticker (e.g., "KXRAMPBREX-40")
             
         Returns:
             Dict with 'content' (page text) and 'url' keys
@@ -253,7 +260,13 @@ class AnalysisGenerator:
             logger.warning("Exa not configured, skipping page crawl")
             return {"content": "", "url": ""}
         
-        url = f"https://kalshi.com/markets/{event_ticker}"
+        # Build URL: https://kalshi.com/markets/{series_ticker}/{series_title_slug}/{event_ticker}
+        # All parts should be lowercase
+        series_slug = series_ticker.lower()
+        title_slug = re.sub(r'[^a-z0-9]+', '-', series_title.lower()).strip('-')
+        event_slug = event_ticker.lower()
+        
+        url = f"https://kalshi.com/markets/{series_slug}/{title_slug}/{event_slug}"
         
         try:
             logger.info(f"Crawling Kalshi page: {url}")
@@ -978,6 +991,8 @@ Use clear, professional language. Be specific with data points. Format for reada
         event_ticker = event.get("event_ticker", "")
         event_title = event.get("name", event.get("title", ""))
         event_subtitle = event.get("subtitle", event.get("sub_title", ""))
+        series_ticker = event.get("series_ticker", "")
+        series_title = event.get("series_title", "")
         series_category = event.get("series_category", "")
         close_time = event.get("close_time", "")
         
@@ -995,12 +1010,18 @@ Use clear, professional language. Be specific with data points. Format for reada
         
         logger.info(f"Starting analysis for {event_ticker}: {event_title}")
         
+        # Build Kalshi URL: https://kalshi.com/markets/{series_ticker}/{series_title_slug}/{event_ticker}
+        series_slug = series_ticker.lower() if series_ticker else ""
+        title_slug = re.sub(r'[^a-z0-9]+', '-', series_title.lower()).strip('-') if series_title else ""
+        event_slug = event_ticker.lower() if event_ticker else ""
+        kalshi_url = f"https://kalshi.com/markets/{series_slug}/{title_slug}/{event_slug}"
+        
         # Initialize analysis result with metadata
         analysis = {
             "analysis_last_updated": datetime.now().isoformat(),
             "analysis_version": "1.0",
             "analysis_owner": "AI-Generated",
-            "kalshi_event_url": f"https://kalshi.com/markets/{event_ticker}",
+            "kalshi_event_url": kalshi_url,
             "market_probability": f"{market_probability:.1f}",
         }
         
@@ -1008,7 +1029,7 @@ Use clear, professional language. Be specific with data points. Format for reada
         logger.info(f"Phase 1: Running parallel API calls for {event_ticker}")
         
         # Run Exa crawl, Octagon research, and question generation in parallel
-        exa_task = self.crawl_kalshi_page(event_ticker)
+        exa_task = self.crawl_kalshi_page(series_ticker, series_title, event_ticker)
         octagon_task = self.run_octagon_research(event, markets)
         questions_task = self.generate_research_questions(
             event_title, event_subtitle, series_category, market_probability
