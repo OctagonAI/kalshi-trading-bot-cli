@@ -325,7 +325,6 @@ class KalshiDataExporter:
             row = {
                 "name": event.get("title", ""),
                 "slug": "",  # octagon (empty)
-                "browse_page": "",  # octagon (empty)
             }
             
             # B) Kalshi Event fields
@@ -552,7 +551,7 @@ class KalshiDataExporter:
             
             events_fields = [
                 # A) Core identity & routing
-                "name", "slug", "browse_page",
+                "name", "slug",
                 # B) Kalshi Event fields
                 "event_ticker", "series_ticker", "subtitle", "collateral_return_type",
                 "mutually_exclusive", "event_category_deprecated", "strike_date",
