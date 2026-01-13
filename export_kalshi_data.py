@@ -8,8 +8,12 @@ Only active/open data is exported (no expired or settled items):
 - Events: fetched with status=open filter
 - Markets: extracted from open events (via with_nested_markets=true)
 - Series: filtered to only those with at least one open event
+
+Optional: Generate AI analysis for events and sync to Webflow CMS.
+Use --full-analysis flag to run analysis for all events missing analysis fields.
 """
 
+import argparse
 import asyncio
 import csv
 import json
@@ -24,7 +28,7 @@ from loguru import logger
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
-from config import KalshiConfig, WebflowConfig, load_config
+from config import KalshiConfig, WebflowConfig, GeminiConfig, ExaConfig, OctagonConfig, load_config
 
 
 def slugify(text: str) -> str:
@@ -62,15 +66,32 @@ ALLOWED_CATEGORIES = {
 class KalshiDataExporter:
     """Exports Kalshi data to CSV files and syncs to Webflow CMS."""
     
-    def __init__(self, config: KalshiConfig, webflow_config: Optional[WebflowConfig] = None):
+    # Maximum number of events to analyze in test mode
+    MAX_TEST_ANALYSES = 5
+    
+    def __init__(
+        self,
+        config: KalshiConfig,
+        webflow_config: Optional[WebflowConfig] = None,
+        gemini_config: Optional[GeminiConfig] = None,
+        exa_config: Optional[ExaConfig] = None,
+        octagon_config: Optional[OctagonConfig] = None,
+        full_analysis: bool = False
+    ):
         self.config = config
         self.webflow_config = webflow_config
+        self.gemini_config = gemini_config
+        self.exa_config = exa_config
+        self.octagon_config = octagon_config
+        self.full_analysis = full_analysis
+        
         # Force real API (not demo) since this is read-only
         self.base_url = "https://api.elections.kalshi.com"
         self.api_key = config.api_key
         self.private_key = config.private_key
         self.client = None
         self.webflow_client = None
+        self.analysis_generator = None
         
     async def _get_headers(self, method: str, path: str) -> Dict[str, str]:
         """Generate headers with RSA signature."""
@@ -403,10 +424,10 @@ class KalshiDataExporter:
                 "analysis_owner": "",
             })
             
-            # F) Octagon Analysis - Section 1 Executive Verdict (all empty)
+            # F) Octagon Analysis - Section 1 Executive Summary (all empty)
             row.update({
                 "confidence_score": "",
-                "executive_verdict": "",
+                "key_takeaway": "",
                 "model_probability": "",
                 "market_probability": "",
                 "edge_pp": "",
@@ -545,6 +566,55 @@ class KalshiDataExporter:
         if self.webflow_client:
             await self.webflow_client.aclose()
             self.webflow_client = None
+    
+    def _init_analysis_generator(self):
+        """Initialize the analysis generator if configs are available."""
+        if self.analysis_generator is not None:
+            return True
+        
+        if not (self.gemini_config and self.gemini_config.is_configured):
+            logger.warning("Gemini not configured, analysis generation disabled")
+            return False
+        
+        if not self.octagon_config:
+            logger.warning("Octagon not configured, analysis generation disabled")
+            return False
+        
+        try:
+            from analysis_generator import AnalysisGenerator
+            self.analysis_generator = AnalysisGenerator(
+                gemini_config=self.gemini_config,
+                octagon_config=self.octagon_config,
+                exa_config=self.exa_config or ExaConfig(api_key="")
+            )
+            logger.info("Analysis generator initialized")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize analysis generator: {e}")
+            return False
+    
+    def _needs_analysis(self, webflow_item: Optional[Dict[str, Any]]) -> bool:
+        """Check if Webflow item is missing analysis fields.
+        
+        Args:
+            webflow_item: Existing Webflow item dict with 'fieldData' key, or None
+            
+        Returns:
+            True if analysis should be generated, False if already complete
+        """
+        if webflow_item is None:
+            return True
+        
+        # Required fields that indicate analysis was run
+        analysis_fields = [
+            'key-takeaway',
+            'executive-summary-richtext',
+            'model-probability',
+            'q1-subtitle',
+        ]
+        
+        field_data = webflow_item.get('fieldData', {})
+        return any(not field_data.get(field) for field in analysis_fields)
     
     async def fetch_webflow_items(self, collection_id: str) -> Dict[str, dict]:
         """Fetch all items from Webflow collection, return as slug -> item dict."""
@@ -757,15 +827,23 @@ class KalshiDataExporter:
     async def sync_events_to_webflow(
         self, 
         events_rows: List[Dict[str, Any]], 
-        market_id_map: Dict[str, str]
+        market_id_map: Dict[str, str],
+        markets_by_event: Optional[Dict[str, List[Dict[str, Any]]]] = None
     ) -> int:
         """Sync events to Webflow CMS with market_page references.
         
         Each event is linked to a market page based on its series_category.
+        Optionally generates AI analysis for events missing analysis fields.
+        
+        Logic:
+        - INSERT: If item doesn't exist in Webflow
+        - UPDATE: If item exists but missing analysis fields (and analysis is enabled)
+        - SKIP: If item exists AND has analysis
         
         Args:
             events_rows: List of event data dictionaries
             market_id_map: Mapping of market slug -> webflow_id
+            markets_by_event: Mapping of event_ticker -> list of markets (for analysis)
             
         Returns: Number of events synced
         """
@@ -774,12 +852,21 @@ class KalshiDataExporter:
             return 0
         
         collection_id = self.webflow_config.events_collection_id
-        synced_count = 0
+        
+        # Counters
+        analysis_count = 0
+        inserted_count = 0
+        updated_count = 0
+        skipped_count = 0
+        
+        # Initialize analysis generator if needed
+        analysis_enabled = self._init_analysis_generator()
         
         # Fetch existing items
         existing_items = await self.fetch_webflow_items(collection_id)
         
-        logger.info(f"Syncing {len(events_rows)} events to Webflow")
+        mode_str = "full" if self.full_analysis else f"test (max {self.MAX_TEST_ANALYSES})"
+        logger.info(f"Syncing {len(events_rows)} events to Webflow (analysis mode: {mode_str})")
         
         for event in events_rows:
             event_ticker = event.get("event_ticker", "")
@@ -794,11 +881,13 @@ class KalshiDataExporter:
                 continue
             
             # Find the market page to reference
-            # First try category slug, then fall back to just category
             market_slug = slugify(series_category)
             market_id = market_id_map.get(market_slug)
             
-            # Build field data for Webflow
+            # Check if item exists in Webflow
+            existing = existing_items.get(slug)
+            
+            # Build base field data for Webflow
             field_data = {
                 "name": event_name,
                 "slug": slug,
@@ -814,14 +903,72 @@ class KalshiDataExporter:
             if market_id:
                 field_data["market-page"] = market_id
             
-            item_id = await self.upsert_webflow_item(collection_id, existing_items, field_data)
-            if item_id:
-                synced_count += 1
-                # Update existing_items cache
-                existing_items[slug] = {"id": item_id, "fieldData": field_data}
+            if existing is None:
+                # Case 1: INSERT - item doesn't exist
+                should_run_analysis = False
+                if analysis_enabled:
+                    if self.full_analysis:
+                        should_run_analysis = True
+                    else:
+                        should_run_analysis = analysis_count < self.MAX_TEST_ANALYSES
+                
+                if should_run_analysis and markets_by_event is not None:
+                    logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
+                    event_markets = markets_by_event.get(event_ticker, [])
+                    try:
+                        analysis = await self.analysis_generator.generate_analysis(event, event_markets)
+                        # Add analysis fields to field_data (convert keys to Webflow format)
+                        for key, value in analysis.items():
+                            webflow_key = key.replace("_", "-")
+                            field_data[webflow_key] = value
+                        analysis_count += 1
+                    except Exception as e:
+                        logger.error(f"Analysis generation failed for {event_ticker}: {e}")
+                
+                item_id = await self.create_webflow_item(collection_id, field_data)
+                if item_id:
+                    inserted_count += 1
+                    existing_items[slug] = {"id": item_id, "fieldData": field_data}
+                    
+            elif self._needs_analysis(existing):
+                # Case 2: UPDATE - item exists but missing analysis
+                should_run_analysis = False
+                if analysis_enabled:
+                    if self.full_analysis:
+                        should_run_analysis = True
+                    else:
+                        should_run_analysis = analysis_count < self.MAX_TEST_ANALYSES
+                
+                if should_run_analysis and markets_by_event is not None:
+                    logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
+                    event_markets = markets_by_event.get(event_ticker, [])
+                    try:
+                        analysis = await self.analysis_generator.generate_analysis(event, event_markets)
+                        # Add analysis fields to field_data
+                        for key, value in analysis.items():
+                            webflow_key = key.replace("_", "-")
+                            field_data[webflow_key] = value
+                        analysis_count += 1
+                        
+                        # Update the item with analysis
+                        item_id = existing["id"]
+                        success = await self.update_webflow_item(collection_id, item_id, field_data)
+                        if success:
+                            updated_count += 1
+                    except Exception as e:
+                        logger.error(f"Analysis generation failed for {event_ticker}: {e}")
+                        skipped_count += 1
+                else:
+                    skipped_count += 1
+            else:
+                # Case 3: SKIP - item exists AND has analysis
+                skipped_count += 1
         
-        logger.info(f"Synced {synced_count} events to Webflow")
-        return synced_count
+        logger.info(
+            f"Webflow sync complete: Inserted={inserted_count}, Updated={updated_count}, "
+            f"Skipped={skipped_count}, Analysis generated={analysis_count}"
+        )
+        return inserted_count + updated_count
     
     async def export(self):
         """Main export function."""
@@ -865,10 +1012,15 @@ class KalshiDataExporter:
             logger.info(f"Filtered to {len(filtered_events_with_markets)} events in allowed categories: {ALLOWED_CATEGORIES}")
             
             # Extract markets from filtered events (ensures consistency)
+            # Also build markets_by_event for analysis generation
             markets = []
+            markets_by_event: Dict[str, List[Dict[str, Any]]] = {}
             for event in filtered_events_with_markets:
+                event_ticker = event.get("event_ticker", "")
                 event_markets = event.get("markets", [])
                 markets.extend(event_markets)
+                if event_ticker:
+                    markets_by_event[event_ticker] = event_markets
             
             logger.info(f"Extracted {len(markets)} markets from {len(filtered_events_with_markets)} filtered events")
             
@@ -909,8 +1061,8 @@ class KalshiDataExporter:
                 "fee_type", "fee_multiplier", "additional_prohibitions_raw",
                 # D) Octagon Analysis - metadata
                 "analysis_last_updated", "analysis_version", "analysis_owner",
-                # E) Octagon Analysis - Section 1 Executive Verdict
-                "confidence_score", "executive_verdict", "model_probability",
+                # E) Octagon Analysis - Section 1 Executive Summary
+                "confidence_score", "key_takeaway", "model_probability",
                 "market_probability", "edge_pp", "expected_return", "r_score",
                 "executive_summary_richtext",
                 # F) Octagon Analysis - Section 2 Kalshi Contract Snapshot
@@ -961,12 +1113,15 @@ class KalshiDataExporter:
                     # Sync markets (browse pages) first to get ID mapping
                     market_id_map = await self.sync_markets_to_webflow(markets_rows)
                     
-                    # Sync events with market_page references
-                    await self.sync_events_to_webflow(events_rows, market_id_map)
+                    # Sync events with market_page references and optional analysis
+                    await self.sync_events_to_webflow(events_rows, market_id_map, markets_by_event)
                     
                     logger.info("Webflow sync completed successfully!")
                 finally:
                     await self._close_webflow_client()
+                    # Close analysis generator if initialized
+                    if self.analysis_generator:
+                        await self.analysis_generator.close()
             else:
                 logger.info("Webflow not configured, skipping sync. Set WEBFLOW_* env vars to enable.")
             
@@ -976,8 +1131,31 @@ class KalshiDataExporter:
 
 async def main():
     """Main entry point."""
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(
+        description="Export Kalshi data to CSV and optionally sync to Webflow with AI analysis"
+    )
+    parser.add_argument(
+        '--full-analysis',
+        action='store_true',
+        help='Run analysis for all events missing analysis fields (expensive). '
+             'Default: only analyze first 5 events.'
+    )
+    args = parser.parse_args()
+    
+    # Load configuration
     config = load_config()
-    exporter = KalshiDataExporter(config.kalshi, config.webflow)
+    
+    # Create exporter with all configs
+    exporter = KalshiDataExporter(
+        config=config.kalshi,
+        webflow_config=config.webflow,
+        gemini_config=config.gemini,
+        exa_config=config.exa,
+        octagon_config=config.octagon,
+        full_analysis=args.full_analysis
+    )
+    
     await exporter.export()
 
 

@@ -47,6 +47,23 @@ WEBFLOW_MARKETS_COLLECTION_ID=your_markets_collection_id_here
 WEBFLOW_EVENTS_COLLECTION_ID=your_events_collection_id_here
 
 # =============================================================================
+# GEMINI API CONFIGURATION (for AI analysis generation)
+# =============================================================================
+
+# Google Gemini API key (get from https://aistudio.google.com/apikey)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Gemini model to use (default: gemini-2.5-flash)
+GEMINI_MODEL=gemini-2.5-flash
+
+# =============================================================================
+# EXA API CONFIGURATION (for web crawling)
+# =============================================================================
+
+# Exa API key (get from https://exa.ai)
+EXA_API_KEY=your_exa_api_key_here
+
+# =============================================================================
 # BOT CONFIGURATION
 # =============================================================================
 

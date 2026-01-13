@@ -83,6 +83,27 @@ class WebflowConfig(BaseModel):
         return bool(self.api_token and self.site_id and self.markets_collection_id and self.events_collection_id)
 
 
+class GeminiConfig(BaseModel):
+    """Google Gemini API configuration."""
+    api_key: str = Field(default="", description="Gemini API key")
+    model: str = Field(default="gemini-2.5-flash", description="Gemini model to use")
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if Gemini is configured."""
+        return bool(self.api_key)
+
+
+class ExaConfig(BaseModel):
+    """Exa API configuration for web crawling."""
+    api_key: str = Field(default="", description="Exa API key")
+    
+    @property
+    def is_configured(self) -> bool:
+        """Check if Exa is configured."""
+        return bool(self.api_key)
+
+
 def _clean_env_value(value: str) -> str:
     """Clean environment variable value by removing inline comments."""
     # Split on '#' and take the first part, then strip whitespace
@@ -97,6 +118,8 @@ class BotConfig(BaseSettings):
     octagon: OctagonConfig = Field(..., description="Octagon configuration")
     openai: OpenAIConfig = Field(..., description="OpenAI configuration")
     webflow: WebflowConfig = Field(default_factory=WebflowConfig, description="Webflow configuration")
+    gemini: GeminiConfig = Field(default_factory=GeminiConfig, description="Gemini configuration")
+    exa: ExaConfig = Field(default_factory=ExaConfig, description="Exa configuration")
     
     # Bot settings
     dry_run: bool = Field(default=True, description="Run in dry-run mode (overridden by CLI)")
@@ -163,11 +186,22 @@ class BotConfig(BaseSettings):
             events_collection_id=os.getenv("WEBFLOW_EVENTS_COLLECTION_ID", "")
         )
         
+        gemini_config = GeminiConfig(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        )
+        
+        exa_config = ExaConfig(
+            api_key=os.getenv("EXA_API_KEY", "")
+        )
+        
         data.update({
             "kalshi": kalshi_config,
             "octagon": octagon_config,
             "openai": openai_config,
             "webflow": webflow_config,
+            "gemini": gemini_config,
+            "exa": exa_config,
             "dry_run": True,  # Default to dry run, overridden by CLI
             "max_bet_amount": float(_clean_env_value(os.getenv("MAX_BET_AMOUNT", "100.0"))),
             "max_events_to_analyze": int(_clean_env_value(os.getenv("MAX_EVENTS_TO_ANALYZE", "50"))),
