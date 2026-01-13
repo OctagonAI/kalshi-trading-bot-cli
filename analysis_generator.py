@@ -97,6 +97,12 @@ def parse_json_safely(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
     
+    # First, strip markdown code blocks (```json ... ``` or ``` ... ```)
+    # This is very common in LLM outputs
+    text = re.sub(r'^```(?:json)?\s*\n?', '', text.strip())
+    text = re.sub(r'\n?```\s*$', '', text.strip())
+    text = text.strip()
+    
     # Try direct parse first
     try:
         return json.loads(text)
