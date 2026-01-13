@@ -26,6 +26,17 @@ from cryptography.hazmat.backends import default_backend
 from config import KalshiConfig, load_config
 
 
+# Hardcoded categories to filter events by
+ALLOWED_CATEGORIES = {
+    "Companies",
+    "Crypto",
+    "Economics",
+    "Financials",
+    "Mentions",
+    "Science and Technology",
+}
+
+
 class KalshiDataExporter:
     """Exports Kalshi data to CSV files."""
     
@@ -503,28 +514,47 @@ class KalshiDataExporter:
             # Note: We fetch events WITH nested markets to ensure consistency
             # This guarantees all markets belong to open events
             events_with_markets = await self.fetch_all_events(with_nested_markets=True)
-            
-            # Extract markets from events (ensures consistency - all markets belong to open events)
-            markets = []
-            for event in events_with_markets:
-                event_markets = event.get("markets", [])
-                markets.extend(event_markets)
-            
-            logger.info(f"Extracted {len(markets)} markets from {len(events_with_markets)} open events")
-            
-            # Use events without the nested markets field for CSV export
-            events = [{k: v for k, v in e.items() if k != "markets"} for e in events_with_markets]
+            logger.info(f"Fetched {len(events_with_markets)} open events with nested markets")
             
             # Get unique series tickers from open events
-            active_series_tickers = set(e.get("series_ticker", "") for e in events if e.get("series_ticker"))
-            logger.info(f"Found {len(active_series_tickers)} unique series with open events")
+            all_series_tickers = set(e.get("series_ticker", "") for e in events_with_markets if e.get("series_ticker"))
+            logger.info(f"Found {len(all_series_tickers)} unique series with open events")
             
             # Fetch all series (for metadata) then filter to only those with open events
             all_series = await self.fetch_all_series()
-            series = [s for s in all_series if s.get("ticker", "") in active_series_tickers]
+            series = [s for s in all_series if s.get("ticker", "") in all_series_tickers]
             logger.info(f"Filtered to {len(series)} active series (from {len(all_series)} total)")
             
             # Build series lookup
+            series_by_ticker = {s.get("ticker", ""): s for s in series}
+            
+            # Filter events by allowed categories (based on series category)
+            filtered_events_with_markets = []
+            for event in events_with_markets:
+                series_ticker = event.get("series_ticker", "")
+                series_data = series_by_ticker.get(series_ticker, {})
+                category = series_data.get("category", "")
+                if category in ALLOWED_CATEGORIES:
+                    filtered_events_with_markets.append(event)
+            
+            logger.info(f"Filtered to {len(filtered_events_with_markets)} events in allowed categories: {ALLOWED_CATEGORIES}")
+            
+            # Extract markets from filtered events (ensures consistency)
+            markets = []
+            for event in filtered_events_with_markets:
+                event_markets = event.get("markets", [])
+                markets.extend(event_markets)
+            
+            logger.info(f"Extracted {len(markets)} markets from {len(filtered_events_with_markets)} filtered events")
+            
+            # Use events without the nested markets field for CSV export
+            events = [{k: v for k, v in e.items() if k != "markets"} for e in filtered_events_with_markets]
+            
+            # Filter series to only those in allowed categories
+            series = [s for s in series if s.get("category", "") in ALLOWED_CATEGORIES]
+            logger.info(f"Filtered to {len(series)} series in allowed categories")
+            
+            # Rebuild series lookup with filtered series
             series_by_ticker = {s.get("ticker", ""): s for s in series}
             
             # Build CSV rows
