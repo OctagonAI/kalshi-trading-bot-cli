@@ -367,39 +367,19 @@ class AnalysisGenerator:
             if hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
                 
-                if hasattr(candidate, 'grounding_metadata'):
+                if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
                     metadata = candidate.grounding_metadata
-                    logger.info(f"Grounding metadata present: {metadata is not None}")
                     
-                    if metadata:
-                        # Log what attributes are available
-                        metadata_attrs = [attr for attr in dir(metadata) if not attr.startswith('_')]
-                        logger.info(f"Metadata attributes: {metadata_attrs}")
-                        
-                        if hasattr(metadata, 'grounding_chunks'):
-                            chunks = metadata.grounding_chunks
-                            logger.info(f"grounding_chunks: {chunks}")
-                            if chunks:
-                                for chunk in chunks:
-                                    logger.info(f"Chunk: {chunk}")
-                                    if hasattr(chunk, 'web') and chunk.web:
-                                        sources.append({
-                                            "title": chunk.web.title or "",
-                                            "uri": chunk.web.uri or ""
-                                        })
-                        else:
-                            logger.info("No grounding_chunks attribute on metadata")
-                    else:
-                        logger.info("grounding_metadata is None")
-                else:
-                    logger.info("No grounding_metadata attribute on candidate")
-            else:
-                logger.info("No candidates in response")
+                    if hasattr(metadata, 'grounding_chunks') and metadata.grounding_chunks:
+                        for chunk in metadata.grounding_chunks:
+                            if hasattr(chunk, 'web') and chunk.web:
+                                sources.append({
+                                    "title": chunk.web.title or "",
+                                    "uri": chunk.web.uri or ""
+                                })
                 
         except Exception as e:
             logger.warning(f"Failed to extract grounding sources: {e}")
-            import traceback
-            logger.debug(f"Traceback: {traceback.format_exc()}")
         
         return sources
     
