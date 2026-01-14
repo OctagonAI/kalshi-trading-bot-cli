@@ -76,7 +76,8 @@ class KalshiDataExporter:
         gemini_config: Optional[GeminiConfig] = None,
         exa_config: Optional[ExaConfig] = None,
         octagon_config: Optional[OctagonConfig] = None,
-        full_analysis: bool = False
+        full_analysis: bool = False,
+        analysis_only: bool = False
     ):
         self.config = config
         self.webflow_config = webflow_config
@@ -84,6 +85,7 @@ class KalshiDataExporter:
         self.exa_config = exa_config
         self.octagon_config = octagon_config
         self.full_analysis = full_analysis
+        self.analysis_only = analysis_only
         
         # Force real API (not demo) since this is read-only
         self.base_url = "https://api.elections.kalshi.com"
@@ -1248,8 +1250,23 @@ class KalshiDataExporter:
                 "transparency_subtitle", "transparency_paragraph_richtext",
             ]
             
+            # Handle analysis-only mode (skip Webflow sync)
+            if self.analysis_only:
+                analysis_enabled = self._init_analysis_generator()
+                if analysis_enabled:
+                    logger.info("Analysis-only mode: generating analysis to CSV (skipping Webflow sync)...")
+                    analyzed_events = await self.generate_analysis_for_events(
+                        events_rows, markets_by_event, timestamp, analysis_fields
+                    )
+                    if analyzed_events:
+                        logger.info(f"Generated analysis for {len(analyzed_events)} events")
+                    # Close analysis generator
+                    if self.analysis_generator:
+                        await self.analysis_generator.close()
+                else:
+                    logger.error("Analysis-only mode requires Gemini and Octagon configs. Check your environment variables.")
             # Sync to Webflow CMS
-            if self.webflow_config and self.webflow_config.is_configured:
+            elif self.webflow_config and self.webflow_config.is_configured:
                 logger.info("Syncing to Webflow CMS...")
                 
                 # Initialize Webflow client
@@ -1305,6 +1322,12 @@ async def main():
         help='Run analysis for all events missing analysis fields (expensive). '
              'Default: only analyze first 5 events.'
     )
+    parser.add_argument(
+        '--analysis-only',
+        action='store_true',
+        help='Skip Webflow sync and only generate analysis output to CSV. '
+             'Useful for testing analysis generation locally.'
+    )
     args = parser.parse_args()
     
     # Load configuration
@@ -1317,7 +1340,8 @@ async def main():
         gemini_config=config.gemini,
         exa_config=config.exa,
         octagon_config=config.octagon,
-        full_analysis=args.full_analysis
+        full_analysis=args.full_analysis,
+        analysis_only=args.analysis_only
     )
     
     await exporter.export()
