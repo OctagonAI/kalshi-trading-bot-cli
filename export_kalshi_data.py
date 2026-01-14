@@ -1090,7 +1090,7 @@ class KalshiDataExporter:
         
         # Write analysis CSV (same format as events CSV with analysis filled in)
         if analyzed_events:
-            self.write_csv(f"analysis_{timestamp}.csv", analyzed_events, output_fields)
+            self.write_csv(f"events_analysis_{timestamp}.csv", analyzed_events, output_fields)
         
         return analyzed_events
     
@@ -1257,8 +1257,8 @@ class KalshiDataExporter:
                     
                     # Write analysis CSV for events that had analysis generated
                     if analyzed_events:
-                        self.write_csv(f"analysis_{timestamp}.csv", analyzed_events, events_fields)
-                        logger.info(f"Wrote {len(analyzed_events)} analyzed events to analysis_{timestamp}.csv")
+                        self.write_csv(f"events_analysis_{timestamp}.csv", analyzed_events, events_fields)
+                        logger.info(f"Wrote {len(analyzed_events)} analyzed events to events_analysis_{timestamp}.csv")
                     
                     logger.info("Webflow sync completed successfully!")
                 finally:
