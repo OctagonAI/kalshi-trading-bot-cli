@@ -36,17 +36,26 @@ class TableDataItem(BaseModel):
     value: str = Field(description="Data value with source in parentheses (plain text, no markdown)")
 
 
+class SourceCitation(BaseModel):
+    """A source citation for footnotes."""
+    number: int = Field(description="Citation number (1, 2, 3, etc.)")
+    source: str = Field(description="Source name (e.g., 'Bloomberg', 'Reuters', 'Federal Reserve')")
+    detail: str = Field(description="Additional detail like date or article title")
+
+
 class QuestionResearch(BaseModel):
     """Research findings for a single question."""
     subtitle: str = Field(description="A concise 5-10 word title for this research section")
     table_data: List[TableDataItem] = Field(description="3 key data points with sources")
-    paragraph: str = Field(description="2-3 paragraph analysis with citations")
+    paragraphs: List[str] = Field(description="2-3 paragraphs with inline citations like [1], [2]")
+    footnotes: List[SourceCitation] = Field(description="Source citations referenced in the paragraphs")
 
 
 class CatalystResearch(BaseModel):
     """Key catalysts that could change market probability."""
     subtitle: str = Field(description="Section title, e.g., 'Key Catalysts'")
-    paragraph: str = Field(description="2-3 paragraphs on bullish/bearish catalysts with dates")
+    paragraphs: List[str] = Field(description="2-3 paragraphs with inline citations like [1], [2]")
+    footnotes: List[SourceCitation] = Field(description="Source citations referenced in the paragraphs")
 
 
 def clean_markdown_response(text: str) -> str:
@@ -592,6 +601,51 @@ Guidelines for each question:
             "q5": f"When will {event_title} be decided?"
         }
     
+    def _format_paragraphs_with_footnotes(
+        self,
+        paragraphs: List[str],
+        footnotes: List[Dict[str, Any]]
+    ) -> str:
+        """Format paragraphs and footnotes as HTML for richtext display.
+        
+        Args:
+            paragraphs: List of paragraph strings with inline citations like [1], [2]
+            footnotes: List of citation dicts with 'number', 'source', 'detail'
+            
+        Returns:
+            HTML string with paragraphs and footnotes section
+        """
+        if not paragraphs:
+            return ""
+        
+        # Format paragraphs as HTML <p> tags
+        # Convert inline citations [1] to superscript links
+        html_parts = []
+        for para in paragraphs:
+            # Convert [1], [2], etc. to superscript
+            formatted_para = re.sub(
+                r'\[(\d+)\]',
+                r'<sup>[\1]</sup>',
+                para
+            )
+            html_parts.append(f"<p>{formatted_para}</p>")
+        
+        # Add footnotes section if we have citations
+        if footnotes:
+            html_parts.append("<hr>")
+            html_parts.append("<p><strong>Sources:</strong></p>")
+            html_parts.append("<ol>")
+            for fn in sorted(footnotes, key=lambda x: x.get("number", 0)):
+                source = fn.get("source", "")
+                detail = fn.get("detail", "")
+                if source and detail:
+                    html_parts.append(f"<li>{source}: {detail}</li>")
+                elif source:
+                    html_parts.append(f"<li>{source}</li>")
+            html_parts.append("</ol>")
+        
+        return "".join(html_parts)
+    
     async def research_question(
         self,
         question: str,
@@ -621,7 +675,17 @@ Provide:
 - table_data: Exactly 3 key data points. Each should have:
   - label: Short metric name (e.g., "Ramp Valuation", "Brex Revenue Target") - plain text only
   - value: The data with source in parentheses (e.g., "$22.5B (Bloomberg, July 2025)") - plain text only
-- paragraph: A 2-3 paragraph analysis explaining what the data means for the prediction market outcome
+- paragraphs: 2-3 separate paragraphs analyzing the data. Each paragraph should:
+  - Be a complete thought (3-5 sentences)
+  - Include inline citations like [1], [2] referencing your sources
+  - Explain what the data means for the prediction market outcome
+- footnotes: List all sources cited in the paragraphs. Each footnote needs:
+  - number: The citation number (1, 2, 3, etc.)
+  - source: The source name (e.g., "Bloomberg", "Reuters", "Federal Reserve")
+  - detail: Date or article title (e.g., "January 2026", "Q4 Earnings Report")
+
+Example paragraph format:
+"The Federal Reserve held rates steady at 5.25-5.50% in their January meeting [1]. Chair Powell indicated that rate cuts remain unlikely until inflation shows sustained progress toward the 2% target [2]. This suggests the market's current pricing of 65% for a March cut may be overly optimistic."
 
 IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
@@ -630,10 +694,21 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
         )
         
         if result:
+            # Format footnotes as list of dicts
+            footnotes = [
+                {"number": fn.number, "source": fn.source, "detail": fn.detail}
+                for fn in result.footnotes
+            ]
+            
+            # Format paragraphs with footnotes as HTML
+            formatted_paragraph = self._format_paragraphs_with_footnotes(
+                result.paragraphs, footnotes
+            )
+            
             return {
                 "subtitle": result.subtitle,
                 "table_data": [{"label": item.label, "value": item.value} for item in result.table_data],
-                "paragraph": result.paragraph
+                "paragraph": formatted_paragraph
             }
         
         # Fallback: try unstructured generation
@@ -670,20 +745,39 @@ Settlement date: {close_time}
 
 Research and identify the key catalysts or events that could significantly change the probability of this market.
 
-Include in your paragraph:
-- Bullish catalysts (could push YES higher) with specific events and dates
-- Bearish catalysts (could push NO higher) with specific events and dates
-- Timeline of key dates to watch before settlement
-- Cite sources for any scheduled events or announcements"""
+Provide:
+- subtitle: A concise section title (e.g., "Key Catalysts", "Events to Watch")
+- paragraphs: 2-3 separate paragraphs covering:
+  - Paragraph 1: Bullish catalysts (could push YES higher) with specific events and dates [1], [2]
+  - Paragraph 2: Bearish catalysts (could push NO higher) with specific events and dates [3], [4]
+  - Paragraph 3: Timeline of key dates to watch before settlement
+  - Use inline citations like [1], [2] for sources
+- footnotes: List all sources cited. Each footnote needs:
+  - number: The citation number (1, 2, 3, etc.)
+  - source: The source name (e.g., "Bloomberg", "Company Investor Relations")
+  - detail: Date or event name (e.g., "January 2026", "Scheduled earnings call")
+
+IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
         result = await self._gemini_generate_structured(
             prompt, CatalystResearch, use_search_grounding=True
         )
         
         if result:
+            # Format footnotes as list of dicts
+            footnotes = [
+                {"number": fn.number, "source": fn.source, "detail": fn.detail}
+                for fn in result.footnotes
+            ]
+            
+            # Format paragraphs with footnotes as HTML
+            formatted_paragraph = self._format_paragraphs_with_footnotes(
+                result.paragraphs, footnotes
+            )
+            
             return {
                 "subtitle": result.subtitle,
-                "paragraph": result.paragraph
+                "paragraph": formatted_paragraph
             }
         
         # Fallback
