@@ -115,7 +115,7 @@ class OctagonClient:
         self,
         question: str,
         context: str = ""
-    ) -> str:
+    ) -> Dict[str, Any]:
         """
         Research a specific question using Octagon Deep Research.
         
@@ -124,7 +124,7 @@ class OctagonClient:
             context: Additional context about the prediction market
             
         Returns:
-            Research response as a string
+            Dict with 'text' (research response) and 'citations' (list of source references)
         """
         try:
             prompt = f"""You are a research analyst providing factual, well-sourced information.
@@ -153,18 +153,27 @@ Focus on current, accurate information. Cite your sources inline."""
             logger.info(f"Completed research for question")
 
             try:
+                from openai_utils import extract_completed_message_with_annotations
+                text, citations = extract_completed_message_with_annotations(response)
+                return {
+                    "text": text,
+                    "citations": citations  # [{order: 1, name: "...", url: "..."}, ...]
+                }
+            except Exception:
+                # Fallback to text-only extraction
                 from openai_utils import extract_completed_message_text
                 content_text = extract_completed_message_text(response)
-                if content_text:
-                    return content_text
-            except Exception:
-                pass
-
-            return ""
+                return {
+                    "text": content_text if content_text else "",
+                    "citations": []
+                }
             
         except Exception as e:
             logger.error(f"Error researching question: {e}")
-            return f"Error researching question: {str(e)}"
+            return {
+                "text": f"Error researching question: {str(e)}",
+                "citations": []
+            }
     
     async def close(self):
         """Close the client (OpenAI client doesn't need explicit closing)."""

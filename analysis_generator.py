@@ -197,6 +197,52 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def format_text_with_citations(text: str, citations: List[Dict[str, Any]]) -> str:
+    """Convert [1], [2] citation markers to clickable HTML links and append sources section.
+    
+    Args:
+        text: Text containing [1], [2], etc. citation markers
+        citations: List of dicts with 'order', 'name', 'url' keys from Octagon
+        
+    Returns:
+        HTML formatted text with clickable citation links and sources section
+    """
+    if not text:
+        return ""
+    
+    # Build citation lookup by order number
+    citation_map = {c["order"]: c for c in citations} if citations else {}
+    
+    # Replace [N] with clickable links
+    def replace_citation(match):
+        try:
+            num = int(match.group(1))
+            if num in citation_map:
+                url = citation_map[num]["url"]
+                return f'<a href="{url}" target="_blank" class="citation-link" data-citation="{num}">[{num}]</a>'
+        except (ValueError, KeyError):
+            pass
+        return match.group(0)  # Return unchanged if not found
+    
+    formatted = re.sub(r'\[(\d+)\]', replace_citation, text)
+    
+    # Clean markdown and convert to HTML
+    formatted = clean_markdown_response(formatted)
+    
+    # Append sources section wrapped in semantic div
+    if citations:
+        formatted += '\n\n<div class="sources-container">'
+        formatted += '<h4 class="sources-title">Sources</h4>'
+        formatted += '<ol class="sources-list">'
+        for c in sorted(citations, key=lambda x: x["order"]):
+            name = c.get("name", f"Source {c['order']}")
+            url = c.get("url", "")
+            formatted += f'<li class="source-item"><a href="{url}" target="_blank" class="source-link">{name}</a></li>'
+        formatted += '</ol></div>'
+    
+    return formatted
+
+
 def format_table_html(table_data: List[Dict[str, str]]) -> str:
     """Format table data as an HTML table for Webflow richtext.
 
@@ -692,12 +738,15 @@ Summarize in 2-3 sentences the main viewpoints and arguments."""
 
         result = await octagon.research_question(question, "")
         
-        if result:
+        # Handle new structured response format
+        result_text = result.get("text", "") if isinstance(result, dict) else result
+        
+        if result_text:
             # Truncate to 2-3 sentences if too long
-            sentences = result.split('. ')
+            sentences = result_text.split('. ')
             if len(sentences) > 4:
-                result = '. '.join(sentences[:3]) + '.'
-            return result
+                result_text = '. '.join(sentences[:3]) + '.'
+            return result_text
         
         return "Limited public discussion available for this market."
     
@@ -740,7 +789,11 @@ Identify:
 
 Be specific about dates, names, and current events."""
 
-        current_context = await octagon.research_question(context_question, "")
+        context_result = await octagon.research_question(context_question, "")
+        
+        # Handle new structured response format
+        current_context = context_result.get("text", "") if isinstance(context_result, dict) else context_result
+        context_citations = context_result.get("citations", []) if isinstance(context_result, dict) else []
 
         # Build chart context if candlesticks provided
         chart_context = ""
@@ -806,8 +859,11 @@ IMPORTANT: Questions must NOT overlap. Each should be independently researchable
             prompt, ResearchQuestions, use_search_grounding=False
         )
         
-        # Format the current state summary as HTML
-        formatted_context = clean_markdown_response(current_context) if current_context else ""
+        # Format the current state summary as HTML with citations
+        if current_context:
+            formatted_context = format_text_with_citations(current_context, context_citations)
+        else:
+            formatted_context = ""
         
         if result:
             return {
@@ -922,13 +978,18 @@ IMPORTANT: Questions must NOT overlap. Each should be independently researchable
         # Step 1: Use Octagon Deep Research for the actual research
         octagon = self._init_octagon()
         context = f'Prediction market: "{event_title}" which resolves {event_subtitle}'
-        research_text = await octagon.research_question(question, context)
+        research_result = await octagon.research_question(question, context)
+        
+        # Handle new structured response format
+        research_text = research_result.get("text", "") if isinstance(research_result, dict) else research_result
+        research_citations = research_result.get("citations", []) if isinstance(research_result, dict) else []
         
         if not research_text:
             return {
                 "subtitle": question[:50],
                 "table_data": [],
-                "paragraph": "Research data not available."
+                "paragraph": "Research data not available.",
+                "citations": []
             }
         
         # Step 2: Use Gemini to format the research into structured output
@@ -945,28 +1006,31 @@ Format this into:
 - paragraphs: 2-3 separate paragraphs summarizing the key findings
 
 IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only.
-Preserve any source citations from the research."""
+Preserve any source citations [1], [2], etc. from the research."""
 
         result, _ = await self._gemini_generate_structured(
             format_prompt, QuestionResearch, use_search_grounding=False
         )
         
         if result:
-            # Format paragraphs as HTML
-            formatted_paragraph = self._format_paragraphs_as_html(result.paragraphs)
+            # Format paragraphs as HTML with clickable citations
+            raw_paragraph = "\n\n".join(result.paragraphs)
+            formatted_paragraph = format_text_with_citations(raw_paragraph, research_citations)
             
             return {
                 "subtitle": result.subtitle,
                 "table_data": [{"label": item.label, "value": item.value} for item in result.table_data],
-                "paragraph": formatted_paragraph
+                "paragraph": formatted_paragraph,
+                "citations": research_citations
             }
         
-        # Fallback: return raw research text
+        # Fallback: return raw research text with citations
         logger.warning("Structured formatting failed, using raw research text")
         return {
             "subtitle": question[:50],
             "table_data": [],
-            "paragraph": clean_markdown_response(research_text)
+            "paragraph": format_text_with_citations(research_text, research_citations),
+            "citations": research_citations
         }
     
     async def research_what_could_change(
@@ -1000,7 +1064,11 @@ Please identify:
 3. Timeline of key dates to watch before settlement"""
 
         octagon = self._init_octagon()
-        research_text = await octagon.research_question(question, "")
+        research_result = await octagon.research_question(question, "")
+        
+        # Handle new structured response format
+        research_text = research_result.get("text", "") if isinstance(research_result, dict) else research_result
+        research_citations = research_result.get("citations", []) if isinstance(research_result, dict) else []
         
         if not research_text:
             return {
@@ -1018,24 +1086,26 @@ Format this into:
 - subtitle: A concise section title (e.g., "Key Catalysts", "Events to Watch")
 - paragraphs: 2-3 separate paragraphs summarizing the catalysts
 
-IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
+IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only.
+Preserve any source citations [1], [2], etc. from the research."""
 
         result, _ = await self._gemini_generate_structured(
             format_prompt, CatalystResearch, use_search_grounding=False
         )
         
         if result:
-            formatted_paragraph = self._format_paragraphs_as_html(result.paragraphs)
+            raw_paragraph = "\n\n".join(result.paragraphs)
+            formatted_paragraph = format_text_with_citations(raw_paragraph, research_citations)
             return {
                 "subtitle": result.subtitle,
                 "paragraph": formatted_paragraph
             }
         
-        # Fallback: return raw research text
+        # Fallback: return raw research text with citations
         logger.warning("Structured formatting failed for catalysts, using raw text")
         return {
             "subtitle": "Key Catalysts",
-            "paragraph": clean_markdown_response(research_text)
+            "paragraph": format_text_with_citations(research_text, research_citations)
         }
     
     def generate_transparency_section(self) -> Dict[str, str]:
@@ -1319,7 +1389,12 @@ Be specific about what happened and cite sources."""
 
             try:
                 result = await octagon.research_question(question, "")
-                return (anomaly.date, result)
+                # Handle new structured response format
+                text = result.get("text", "") if isinstance(result, dict) else result
+                citations = result.get("citations", []) if isinstance(result, dict) else []
+                # Format with citations
+                formatted = format_text_with_citations(text, citations) if text else ""
+                return (anomaly.date, formatted)
             except Exception as e:
                 logger.error(f"Error researching anomaly on {anomaly.date}: {e}")
                 return (anomaly.date, f"Unable to research: {str(e)}")

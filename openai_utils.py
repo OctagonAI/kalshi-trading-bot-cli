@@ -65,6 +65,66 @@ def extract_completed_message_text(response: Any) -> str:
     return "".join(text_chunks).strip()
 
 
+def extract_completed_message_with_annotations(response: Any) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Extract text AND annotations from a completed assistant message in a Responses API result.
+    
+    Octagon Deep Research returns annotations with source citations:
+    - annotation.order: Citation number (1, 2, 3...)
+    - annotation.name: Source name (e.g., "Federal Reserve Press Release, Jan 2026")
+    - annotation.url: Direct URL to the source
+    
+    Returns:
+        Tuple of (text, annotations) where annotations is a list of dicts with order, name, url
+    """
+    text_chunks: List[str] = []
+    annotations: List[Dict[str, Any]] = []
+
+    try:
+        output_items = getattr(response, "output", None) or response.get("output", [])  # type: ignore[attr-defined]
+    except Exception:
+        output_items = []
+
+    for item in output_items or []:
+        # SDK objects expose attributes; JSON dicts expose keys – support both
+        item_type = getattr(item, "type", None) or (isinstance(item, dict) and item.get("type"))
+        item_status = getattr(item, "status", None) or (isinstance(item, dict) and item.get("status"))
+        if item_type == "message" and item_status == "completed":
+            content = getattr(item, "content", None) or (isinstance(item, dict) and item.get("content")) or []
+            for part in content or []:
+                part_type = getattr(part, "type", None) or (isinstance(part, dict) and part.get("type"))
+                if part_type == "output_text":
+                    # Extract text
+                    text_value = getattr(part, "text", None) or (isinstance(part, dict) and part.get("text"))
+                    if isinstance(text_value, str) and text_value:
+                        text_chunks.append(text_value)
+                    
+                    # Extract annotations
+                    part_annotations = getattr(part, "annotations", None) or (isinstance(part, dict) and part.get("annotations")) or []
+                    for ann in part_annotations:
+                        try:
+                            # Handle SDK objects
+                            order = getattr(ann, "order", None) or (isinstance(ann, dict) and ann.get("order"))
+                            name = getattr(ann, "name", None) or (isinstance(ann, dict) and ann.get("name"))
+                            url = getattr(ann, "url", None) or (isinstance(ann, dict) and ann.get("url"))
+                            
+                            if order is not None and url:
+                                annotations.append({
+                                    "order": int(order),
+                                    "name": str(name) if name else f"Source {order}",
+                                    "url": str(url)
+                                })
+                        except Exception:
+                            # Skip malformed annotations
+                            pass
+            break
+
+    # Sort annotations by order
+    annotations.sort(key=lambda x: x["order"])
+    
+    return "".join(text_chunks).strip(), annotations
+
+
 async def responses_create_text(
     client: Any,
     *,
