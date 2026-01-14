@@ -273,6 +273,162 @@ def format_table_html(table_data: List[Dict[str, str]]) -> str:
     return f'<table><tbody>{"".join(rows)}</tbody></table>'
 
 
+def format_orderbook_summary(orderbook: Dict[str, Any]) -> Tuple[str, str]:
+    """Format orderbook data into richtext summary and JSON.
+    
+    Args:
+        orderbook: Raw orderbook data from Kalshi API
+        
+    Returns:
+        Tuple of (richtext_summary, json_data)
+    """
+    if not orderbook:
+        return "<p>No orderbook data available.</p>", "[]"
+    
+    # Extract yes side orderbook
+    yes_data = orderbook.get("yes", {}) or orderbook
+    bids = yes_data.get("bids", []) or []
+    asks = yes_data.get("asks", []) or []
+    
+    # Calculate spread
+    best_bid = bids[0] if bids else None
+    best_ask = asks[0] if asks else None
+    
+    if best_bid and best_ask:
+        bid_price = best_bid.get("price", 0) / 100 if best_bid.get("price", 0) > 1 else best_bid.get("price", 0)
+        ask_price = best_ask.get("price", 0) / 100 if best_ask.get("price", 0) > 1 else best_ask.get("price", 0)
+        spread = abs(ask_price - bid_price) * 100  # In cents
+        
+        bid_size = best_bid.get("quantity", 0) or best_bid.get("count", 0)
+        ask_size = best_ask.get("quantity", 0) or best_ask.get("count", 0)
+        
+        summary = f"<p><strong>Spread:</strong> {spread:.0f}c</p>"
+        summary += f"<p><strong>Best Bid:</strong> {bid_price*100:.0f}c ({bid_size:,} contracts)</p>"
+        summary += f"<p><strong>Best Ask:</strong> {ask_price*100:.0f}c ({ask_size:,} contracts)</p>"
+        
+        # Calculate total depth
+        total_bid_depth = sum(b.get("quantity", 0) or b.get("count", 0) for b in bids[:5])
+        total_ask_depth = sum(a.get("quantity", 0) or a.get("count", 0) for a in asks[:5])
+        summary += f"<p><strong>Depth (5 levels):</strong> {total_bid_depth:,} bid / {total_ask_depth:,} ask</p>"
+    else:
+        summary = "<p>Limited orderbook data available.</p>"
+    
+    # Build JSON for frontend
+    json_data = {
+        "spread": spread if best_bid and best_ask else None,
+        "best_bid": {"price": bid_price * 100, "size": bid_size} if best_bid else None,
+        "best_ask": {"price": ask_price * 100, "size": ask_size} if best_ask else None,
+        "bids": [{"price": (b.get("price", 0) / 100 if b.get("price", 0) > 1 else b.get("price", 0)) * 100, 
+                  "size": b.get("quantity", 0) or b.get("count", 0)} for b in bids[:10]],
+        "asks": [{"price": (a.get("price", 0) / 100 if a.get("price", 0) > 1 else a.get("price", 0)) * 100,
+                  "size": a.get("quantity", 0) or a.get("count", 0)} for a in asks[:10]]
+    }
+    
+    return summary, json.dumps(json_data)
+
+
+def format_trades_summary(trades: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """Format recent trades into richtext summary and JSON.
+    
+    Args:
+        trades: List of trade objects from Kalshi API
+        
+    Returns:
+        Tuple of (richtext_summary, json_data)
+    """
+    if not trades:
+        return "<p>No recent trade data available.</p>", "[]"
+    
+    # Calculate summary stats
+    total_trades = len(trades)
+    
+    # Get trade sizes (in cents, convert to dollars)
+    sizes = []
+    for t in trades:
+        # Try different field names
+        size = t.get("count", 0) or t.get("size", 0) or t.get("quantity", 0)
+        price = t.get("yes_price", 0) or t.get("price", 0)
+        if size and price:
+            # Size in contracts * price per contract
+            dollar_value = size * (price / 100 if price > 1 else price)
+            sizes.append(dollar_value)
+    
+    if sizes:
+        avg_size = sum(sizes) / len(sizes)
+        max_size = max(sizes)
+        total_volume = sum(sizes)
+        
+        summary = f"<p><strong>Recent Trades:</strong> {total_trades} trades</p>"
+        summary += f"<p><strong>Total Volume:</strong> ${total_volume:,.0f}</p>"
+        summary += f"<p><strong>Average Trade:</strong> ${avg_size:.0f}</p>"
+        summary += f"<p><strong>Largest Trade:</strong> ${max_size:.0f}</p>"
+    else:
+        summary = f"<p><strong>Recent Trades:</strong> {total_trades} trades</p>"
+    
+    # Build JSON for frontend (limit to recent 20)
+    json_data = []
+    for t in trades[:20]:
+        json_data.append({
+            "time": t.get("created_time", "") or t.get("ts", ""),
+            "price": t.get("yes_price", 0) or t.get("price", 0),
+            "size": t.get("count", 0) or t.get("size", 0) or t.get("quantity", 0)
+        })
+    
+    return summary, json.dumps(json_data)
+
+
+def format_historical_track_record(settled_markets: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """Format settled markets into historical track record summary.
+    
+    Args:
+        settled_markets: List of settled market objects
+        
+    Returns:
+        Tuple of (richtext_summary, json_data)
+    """
+    if not settled_markets:
+        return "<p>No historical resolution data available for this series.</p>", "[]"
+    
+    total = len(settled_markets)
+    yes_count = sum(1 for m in settled_markets if m.get("result") == "yes" or m.get("result") == "Yes")
+    no_count = sum(1 for m in settled_markets if m.get("result") == "no" or m.get("result") == "No")
+    
+    summary = f"<p><strong>Historical Resolutions:</strong> {total} markets in this series</p>"
+    summary += f"<p><strong>Outcomes:</strong> {yes_count} resolved YES, {no_count} resolved NO</p>"
+    
+    # List recent resolutions
+    recent = settled_markets[:5]
+    if recent:
+        summary += "<p><strong>Recent resolutions:</strong></p><ul>"
+        for m in recent:
+            ticker = m.get("ticker", "Unknown")
+            result = m.get("result", "Unknown")
+            settled_time = m.get("settlement_time", "") or m.get("close_time", "")
+            summary += f"<li>{ticker}: {result.upper()}"
+            if settled_time:
+                # Try to format date
+                try:
+                    if isinstance(settled_time, str):
+                        dt = datetime.fromisoformat(settled_time.replace("Z", "+00:00"))
+                        summary += f" ({dt.strftime('%b %d, %Y')})"
+                except:
+                    pass
+            summary += "</li>"
+        summary += "</ul>"
+    
+    # Build JSON
+    json_data = []
+    for m in settled_markets:
+        json_data.append({
+            "ticker": m.get("ticker", ""),
+            "result": m.get("result", ""),
+            "settled_time": m.get("settlement_time", "") or m.get("close_time", ""),
+            "final_price": m.get("last_price", 0)
+        })
+    
+    return summary, json.dumps(json_data)
+
+
 def parse_json_safely(text: str) -> Optional[Dict[str, Any]]:
     """Parse JSON from text, handling common issues with LLM output.
     
@@ -1712,7 +1868,7 @@ Use clear, professional language. Be specific with data points. Format for reada
         confidence: int
     ) -> float:
         """Calculate R-score (z-score based on edge and confidence).
-        
+
         Higher confidence = lower uncertainty = higher R-score for same edge.
         """
         # Assume standard deviation inversely proportional to confidence
@@ -1720,14 +1876,124 @@ Use clear, professional language. Be specific with data points. Format for reada
         std = 15 - confidence  # Simple linear relationship
         if std <= 0:
             std = 1
-        
+
         return edge / std
+
+    def _calculate_price_statistics(
+        self,
+        candlesticks: List[Dict[str, Any]]
+    ) -> Dict[str, str]:
+        """Calculate price statistics from candlestick data.
+        
+        Args:
+            candlesticks: List of candlestick data points
+            
+        Returns:
+            Dict with 'richtext' and 'json' keys
+        """
+        if not candlesticks:
+            return {"richtext": "<p>No price data available.</p>", "json": "{}"}
+        
+        # Extract prices
+        prices = []
+        timestamps = []
+        for candle in candlesticks:
+            price = candle.get("price")
+            ts = candle.get("end_period_ts", 0)
+            if price is not None:
+                if isinstance(price, dict):
+                    price = price.get("close", 0)
+                price = float(price) if price else 0
+                if price > 1:
+                    price = price / 100  # Convert cents to probability
+                prices.append(price)
+                timestamps.append(ts)
+        
+        if not prices:
+            return {"richtext": "<p>No price data available.</p>", "json": "{}"}
+        
+        # Calculate statistics
+        current_price = prices[-1]
+        ath = max(prices)
+        atl = min(prices)
+        ath_idx = prices.index(ath)
+        atl_idx = prices.index(atl)
+        
+        # Format dates for ATH/ATL
+        try:
+            ath_date = datetime.fromtimestamp(timestamps[ath_idx]).strftime("%b %d, %Y")
+        except:
+            ath_date = "Unknown"
+        try:
+            atl_date = datetime.fromtimestamp(timestamps[atl_idx]).strftime("%b %d, %Y")
+        except:
+            atl_date = "Unknown"
+        
+        # Calculate changes
+        if len(prices) >= 7:
+            change_7d = (current_price - prices[-7]) * 100  # percentage points
+        else:
+            change_7d = None
+        
+        if len(prices) >= 30:
+            change_30d = (current_price - prices[-30]) * 100
+        else:
+            change_30d = None
+        
+        # Calculate volatility (standard deviation of daily returns)
+        if len(prices) >= 2:
+            returns = [(prices[i] - prices[i-1]) / prices[i-1] if prices[i-1] != 0 else 0 
+                      for i in range(1, len(prices))]
+            if returns:
+                mean_return = sum(returns) / len(returns)
+                variance = sum((r - mean_return) ** 2 for r in returns) / len(returns)
+                volatility = (variance ** 0.5) * 100  # As percentage
+            else:
+                volatility = 0
+        else:
+            volatility = 0
+        
+        # Determine volatility level
+        if volatility > 10:
+            vol_level = "High"
+        elif volatility > 5:
+            vol_level = "Medium"
+        else:
+            vol_level = "Low"
+        
+        # Build richtext summary
+        richtext = f"<p><strong>All-Time High:</strong> {ath*100:.1f}% ({ath_date})</p>"
+        richtext += f"<p><strong>All-Time Low:</strong> {atl*100:.1f}% ({atl_date})</p>"
+        richtext += f"<p><strong>Current Price:</strong> {current_price*100:.1f}%</p>"
+        if change_7d is not None:
+            richtext += f"<p><strong>7-Day Change:</strong> {change_7d:+.1f}pp</p>"
+        if change_30d is not None:
+            richtext += f"<p><strong>30-Day Change:</strong> {change_30d:+.1f}pp</p>"
+        richtext += f"<p><strong>Volatility:</strong> {vol_level}</p>"
+        
+        # Build JSON
+        json_data = {
+            "ath": round(ath * 100, 1),
+            "atl": round(atl * 100, 1),
+            "ath_date": ath_date,
+            "atl_date": atl_date,
+            "current": round(current_price * 100, 1),
+            "change_7d": round(change_7d, 1) if change_7d is not None else None,
+            "change_30d": round(change_30d, 1) if change_30d is not None else None,
+            "volatility": round(volatility, 2),
+            "volatility_level": vol_level
+        }
+        
+        return {"richtext": richtext, "json": json.dumps(json_data)}
     
     async def generate_analysis(
         self,
         event: Dict[str, Any],
         markets: List[Dict[str, Any]],
-        candlesticks: Optional[List[Dict[str, Any]]] = None
+        candlesticks: Optional[List[Dict[str, Any]]] = None,
+        orderbook: Optional[Dict[str, Any]] = None,
+        recent_trades: Optional[List[Dict[str, Any]]] = None,
+        settled_markets: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Generate complete analysis for an event.
 
@@ -1736,11 +2002,15 @@ Use clear, professional language. Be specific with data points. Format for reada
         2. Researches each question with Octagon Deep Research
         3. Synthesizes executive summary and key takeaway
         4. Interprets candlestick chart data with Gemini Pro
+        5. Formats orderbook, trades, and historical data
 
         Args:
             event: Event data dictionary with title, subtitle, ticker, etc.
             markets: List of market data dictionaries for this event
             candlesticks: Optional list of candlestick data for chart analysis
+            orderbook: Optional orderbook data for liquidity analysis
+            recent_trades: Optional list of recent trades
+            settled_markets: Optional list of settled markets for track record
 
         Returns:
             Dict containing all analysis fields ready for Webflow
@@ -1975,7 +2245,43 @@ Use clear, professional language. Be specific with data points. Format for reada
         else:
             analysis["chart_analysis_richtext"] = "<p>No historical price data available.</p>"
             analysis["candlestick_data_json"] = "[]"
-        
+
+        # Phase 7: Process orderbook data
+        if orderbook:
+            orderbook_richtext, orderbook_json = format_orderbook_summary(orderbook)
+            analysis["orderbook_summary_richtext"] = orderbook_richtext
+            analysis["orderbook_json"] = orderbook_json
+        else:
+            analysis["orderbook_summary_richtext"] = "<p>No orderbook data available.</p>"
+            analysis["orderbook_json"] = "{}"
+
+        # Phase 8: Process recent trades
+        if recent_trades:
+            trades_richtext, trades_json = format_trades_summary(recent_trades)
+            analysis["trade_activity_richtext"] = trades_richtext
+            analysis["recent_trades_json"] = trades_json
+        else:
+            analysis["trade_activity_richtext"] = "<p>No recent trade data available.</p>"
+            analysis["recent_trades_json"] = "[]"
+
+        # Phase 9: Process historical track record
+        if settled_markets:
+            history_richtext, history_json = format_historical_track_record(settled_markets)
+            analysis["historical_resolutions_richtext"] = history_richtext
+            analysis["historical_resolutions_json"] = history_json
+        else:
+            analysis["historical_resolutions_richtext"] = "<p>No historical resolution data available for this series.</p>"
+            analysis["historical_resolutions_json"] = "[]"
+
+        # Phase 10: Calculate price statistics from candlesticks
+        if candlesticks:
+            price_stats = self._calculate_price_statistics(candlesticks)
+            analysis["price_statistics_richtext"] = price_stats["richtext"]
+            analysis["price_statistics_json"] = price_stats["json"]
+        else:
+            analysis["price_statistics_richtext"] = "<p>No price statistics available.</p>"
+            analysis["price_statistics_json"] = "{}"
+
         # Calculate metrics
         edge = self._calculate_edge(model_probability, market_probability)
         expected_return = self._calculate_expected_return(model_probability, market_probability)

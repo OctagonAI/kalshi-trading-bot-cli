@@ -188,6 +188,115 @@ class KalshiDataExporter:
         except Exception as e:
             logger.warning(f"Could not fetch candlesticks for {market_ticker}: {e}")
             return []
+
+    async def fetch_orderbook(
+        self,
+        market_ticker: str,
+        depth: int = 10
+    ) -> Dict[str, Any]:
+        """Fetch orderbook data for a market.
+
+        Args:
+            market_ticker: The market ticker
+            depth: Number of price levels to retrieve
+
+        Returns:
+            Dict with orderbook data
+        """
+        try:
+            headers = await self._get_headers("GET", f"/trade-api/v2/markets/{market_ticker}/orderbook")
+            params = {"depth": depth}
+            
+            response = await self.client.get(
+                f"/trade-api/v2/markets/{market_ticker}/orderbook",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            orderbook = data.get("orderbook", {})
+            logger.info(f"Retrieved orderbook for {market_ticker}")
+            return orderbook
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch orderbook for {market_ticker}: {e}")
+            return {}
+
+    async def fetch_recent_trades(
+        self,
+        market_ticker: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Fetch recent trades for a market.
+
+        Args:
+            market_ticker: The market ticker
+            limit: Maximum number of trades to retrieve
+
+        Returns:
+            List of trade objects
+        """
+        try:
+            headers = await self._get_headers("GET", "/trade-api/v2/trades")
+            params = {
+                "ticker": market_ticker,
+                "limit": min(limit, 1000)
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/trades",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            trades = data.get("trades", [])
+            logger.info(f"Retrieved {len(trades)} trades for {market_ticker}")
+            return trades
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch trades for {market_ticker}: {e}")
+            return []
+
+    async def fetch_settled_markets(
+        self,
+        series_ticker: str,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Fetch settled markets for historical track record.
+
+        Args:
+            series_ticker: The series ticker
+            limit: Maximum number of markets to retrieve
+
+        Returns:
+            List of settled market objects
+        """
+        try:
+            headers = await self._get_headers("GET", "/trade-api/v2/markets")
+            params = {
+                "series_ticker": series_ticker,
+                "status": "settled",
+                "limit": min(limit, 200)
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/markets",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            markets = data.get("markets", [])
+            logger.info(f"Retrieved {len(markets)} settled markets for {series_ticker}")
+            return markets
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch settled markets for {series_ticker}: {e}")
+            return []
     
     async def fetch_all_series(self) -> List[Dict[str, Any]]:
         """Fetch all series from Kalshi API with pagination.
@@ -1027,15 +1136,38 @@ class KalshiDataExporter:
                     logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
                     event_markets = markets_by_event.get(event_ticker, [])
                     
-                    # Fetch candlestick data for chart analysis
+                    # Fetch market data for analysis
                     candlesticks = []
+                    orderbook = {}
+                    recent_trades = []
+                    settled_markets = []
+                    
                     if event_markets:
                         market_ticker = event_markets[0].get("ticker", "")
+                        series_ticker = event.get("series_ticker", "")
+                        
                         if market_ticker:
-                            candlesticks = await self.fetch_market_candlesticks(market_ticker)
+                            async def empty_list():
+                                return []
+                            
+                            candle_task = self.fetch_market_candlesticks(market_ticker)
+                            orderbook_task = self.fetch_orderbook(market_ticker)
+                            trades_task = self.fetch_recent_trades(market_ticker, limit=100)
+                            settled_task = self.fetch_settled_markets(series_ticker) if series_ticker else empty_list()
+                            
+                            results = await asyncio.gather(
+                                candle_task, orderbook_task, trades_task, settled_task,
+                                return_exceptions=True
+                            )
+                            candlesticks = results[0] if not isinstance(results[0], Exception) else []
+                            orderbook = results[1] if not isinstance(results[1], Exception) else {}
+                            recent_trades = results[2] if not isinstance(results[2], Exception) else []
+                            settled_markets = results[3] if not isinstance(results[3], Exception) else []
                     
                     try:
-                        analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
+                        analysis = await self.analysis_generator.generate_analysis(
+                            event, event_markets, candlesticks, orderbook, recent_trades, settled_markets
+                        )
                         # Add analysis fields to field_data (convert keys to Webflow format)
                         for key, value in analysis.items():
                             webflow_key = key.replace("_", "-")
@@ -1068,15 +1200,38 @@ class KalshiDataExporter:
                     logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
                     event_markets = markets_by_event.get(event_ticker, [])
                     
-                    # Fetch candlestick data for chart analysis
+                    # Fetch market data for analysis
                     candlesticks = []
+                    orderbook = {}
+                    recent_trades = []
+                    settled_markets = []
+                    
                     if event_markets:
                         market_ticker = event_markets[0].get("ticker", "")
+                        series_ticker = event.get("series_ticker", "")
+                        
                         if market_ticker:
-                            candlesticks = await self.fetch_market_candlesticks(market_ticker)
+                            async def empty_list():
+                                return []
+                            
+                            candle_task = self.fetch_market_candlesticks(market_ticker)
+                            orderbook_task = self.fetch_orderbook(market_ticker)
+                            trades_task = self.fetch_recent_trades(market_ticker, limit=100)
+                            settled_task = self.fetch_settled_markets(series_ticker) if series_ticker else empty_list()
+                            
+                            results = await asyncio.gather(
+                                candle_task, orderbook_task, trades_task, settled_task,
+                                return_exceptions=True
+                            )
+                            candlesticks = results[0] if not isinstance(results[0], Exception) else []
+                            orderbook = results[1] if not isinstance(results[1], Exception) else {}
+                            recent_trades = results[2] if not isinstance(results[2], Exception) else []
+                            settled_markets = results[3] if not isinstance(results[3], Exception) else []
                     
                     try:
-                        analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
+                        analysis = await self.analysis_generator.generate_analysis(
+                            event, event_markets, candlesticks, orderbook, recent_trades, settled_markets
+                        )
                         # Add analysis fields to field_data
                         for key, value in analysis.items():
                             webflow_key = key.replace("_", "-")
@@ -1145,15 +1300,45 @@ class KalshiDataExporter:
             logger.info(f"Generating analysis ({analysis_count + 1}/{max_analyses}): {event_ticker}")
             event_markets = markets_by_event.get(event_ticker, [])
             
-            # Fetch candlestick data for chart analysis
+            # Fetch market data for analysis
             candlesticks = []
+            orderbook = {}
+            recent_trades = []
+            settled_markets = []
+            
             if event_markets:
                 market_ticker = event_markets[0].get("ticker", "")
+                series_ticker = event.get("series_ticker", "")
+                
                 if market_ticker:
-                    candlesticks = await self.fetch_market_candlesticks(market_ticker)
+                    # Fetch all market data in parallel
+                    async def empty_list():
+                        return []
+                    
+                    candle_task = self.fetch_market_candlesticks(market_ticker)
+                    orderbook_task = self.fetch_orderbook(market_ticker)
+                    trades_task = self.fetch_recent_trades(market_ticker, limit=100)
+                    settled_task = self.fetch_settled_markets(series_ticker) if series_ticker else empty_list()
+                    
+                    candlesticks, orderbook, recent_trades, settled_markets = await asyncio.gather(
+                        candle_task, orderbook_task, trades_task, settled_task,
+                        return_exceptions=True
+                    )
+                    
+                    # Handle exceptions
+                    if isinstance(candlesticks, Exception):
+                        candlesticks = []
+                    if isinstance(orderbook, Exception):
+                        orderbook = {}
+                    if isinstance(recent_trades, Exception):
+                        recent_trades = []
+                    if isinstance(settled_markets, Exception):
+                        settled_markets = []
             
             try:
-                analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
+                analysis = await self.analysis_generator.generate_analysis(
+                    event, event_markets, candlesticks, orderbook, recent_trades, settled_markets
+                )
                 # Merge event data with analysis
                 analyzed_event = {**event, **analysis}
                 analyzed_events.append(analyzed_event)
@@ -1279,6 +1464,11 @@ class KalshiDataExporter:
                 "transparency_subtitle", "transparency_paragraph_richtext",
                 # J) Chart Analysis
                 "chart_analysis_richtext", "candlestick_data_json", "chart_anomalies_json",
+                # K) Market Data
+                "orderbook_summary_richtext", "orderbook_json",
+                "trade_activity_richtext", "recent_trades_json",
+                "historical_resolutions_richtext", "historical_resolutions_json",
+                "price_statistics_richtext", "price_statistics_json",
             ]
             
             contracts_fields = [

@@ -532,6 +532,115 @@ class KalshiClient:
             logger.error(f"Error getting candlesticks for {market_ticker}: {e}")
             return []
     
+    async def get_orderbook(
+        self,
+        market_ticker: str,
+        depth: int = 10
+    ) -> Dict[str, Any]:
+        """Get orderbook data for a specific market.
+
+        Args:
+            market_ticker: The market ticker (e.g., 'INXD-24JAN01')
+            depth: Number of price levels to retrieve (default 10)
+
+        Returns:
+            Dict with 'yes' and 'no' sides, each containing bid/ask arrays
+        """
+        try:
+            headers = await self._get_headers("GET", f"/trade-api/v2/markets/{market_ticker}/orderbook")
+            params = {"depth": depth}
+            
+            response = await self.client.get(
+                f"/trade-api/v2/markets/{market_ticker}/orderbook",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            orderbook = data.get("orderbook", {})
+            logger.info(f"Retrieved orderbook for {market_ticker}")
+            return orderbook
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch orderbook for {market_ticker}: {e}")
+            return {}
+
+    async def get_trades(
+        self,
+        market_ticker: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Get recent trades for a specific market.
+
+        Args:
+            market_ticker: The market ticker
+            limit: Maximum number of trades to retrieve (default 100)
+
+        Returns:
+            List of trade objects with price, size, timestamp, etc.
+        """
+        try:
+            headers = await self._get_headers("GET", "/trade-api/v2/trades")
+            params = {
+                "ticker": market_ticker,
+                "limit": min(limit, 1000)  # API max is 1000
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/trades",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            trades = data.get("trades", [])
+            logger.info(f"Retrieved {len(trades)} trades for {market_ticker}")
+            return trades
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch trades for {market_ticker}: {e}")
+            return []
+
+    async def get_settled_markets(
+        self,
+        series_ticker: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Get settled markets for a series (historical outcomes).
+
+        Args:
+            series_ticker: The series ticker
+            limit: Maximum number of markets to retrieve
+
+        Returns:
+            List of settled market objects
+        """
+        try:
+            headers = await self._get_headers("GET", "/trade-api/v2/markets")
+            params = {
+                "series_ticker": series_ticker,
+                "status": "settled",
+                "limit": min(limit, 1000)
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/markets",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            markets = data.get("markets", [])
+            logger.info(f"Retrieved {len(markets)} settled markets for series {series_ticker}")
+            return markets
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch settled markets for {series_ticker}: {e}")
+            return []
+    
     async def close(self):
         """Close the HTTP client."""
         if self.client:
