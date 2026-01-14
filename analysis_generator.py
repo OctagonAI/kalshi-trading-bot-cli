@@ -617,19 +617,21 @@ Summarize in 2-3 sentences the main viewpoints and arguments."""
         event_title: str,
         event_subtitle: str,
         series_category: str,
-        market_probability: float
+        market_probability: float,
+        candlesticks: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, str]:
         """Generate 5 timely, mutually exclusive research questions.
-        
+
         Uses Octagon to understand current context, then Gemini to generate
         structured questions that don't overlap.
-        
+
         Args:
             event_title: Title of the event
             event_subtitle: Subtitle of the event
             series_category: Category of the series
             market_probability: Current market probability (0-100)
-            
+            candlesticks: Optional list of candlestick data for price context
+
         Returns:
             Dict with keys q1-q5 containing the research questions,
             plus 'current_state_summary' with the Octagon research context
@@ -648,7 +650,33 @@ Identify:
 Be specific about dates, names, and current events."""
 
         current_context = await octagon.research_question(context_question, "")
-        
+
+        # Build chart context if candlesticks provided
+        chart_context = ""
+        if candlesticks and len(candlesticks) > 0:
+            prices = []
+            for candle in candlesticks:
+                price = candle.get("price")
+                if price is not None:
+                    if isinstance(price, dict):
+                        price = price.get("close", 0)
+                    prices.append(float(price) if price else 0)
+            
+            if prices:
+                min_price = min(prices) / 100 if max(prices) > 1 else min(prices)
+                max_price = max(prices) / 100 if max(prices) > 1 else max(prices)
+                latest_price = prices[-1] / 100 if prices[-1] > 1 else prices[-1]
+                first_price = prices[0] / 100 if prices[0] > 1 else prices[0]
+                price_change = latest_price - first_price
+                trend = "upward" if price_change > 0.05 else "downward" if price_change < -0.05 else "sideways"
+                
+                chart_context = f"""
+Price Chart Analysis:
+- Price range: {min_price*100:.1f}% to {max_price*100:.1f}% YES probability
+- Starting price: {first_price*100:.1f}% → Current price: {latest_price*100:.1f}%
+- Overall trend: {trend} ({price_change*100:+.1f} percentage points)
+- Data points: {len(candlesticks)} periods"""
+
         # Step 2: Use Gemini to generate 5 mutually exclusive questions based on the context
         prompt = f"""You are generating 5 research questions for a prediction market analysis page.
 
@@ -656,6 +684,7 @@ Market: "{event_title}"
 Subtitle: {event_subtitle}
 Category: {series_category}
 Current market odds: {market_probability:.1f}% YES
+{chart_context}
 
 Current context and trending topics:
 {current_context[:3000] if current_context else "No current context available."}
@@ -1407,7 +1436,7 @@ Use clear, professional language. Be specific with data points. Format for reada
         exa_task = self.crawl_kalshi_page(series_ticker, series_title, event_ticker)
         octagon_task = self.run_octagon_research(event, markets)
         questions_task = self.generate_research_questions(
-            event_title, event_subtitle, series_category, market_probability
+            event_title, event_subtitle, series_category, market_probability, candlesticks
         )
         
         exa_result, octagon_result, questions = await asyncio.gather(
