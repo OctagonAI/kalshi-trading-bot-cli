@@ -1469,6 +1469,7 @@ class KalshiDataExporter:
                 "trade_activity_richtext", "recent_trades_json",
                 "historical_resolutions_richtext", "historical_resolutions_json",
                 "price_statistics_richtext", "price_statistics_json",
+                "key_dates_richtext", "key_dates_json",
             ]
             
             contracts_fields = [

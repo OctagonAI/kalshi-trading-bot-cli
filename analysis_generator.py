@@ -377,6 +377,79 @@ def format_trades_summary(trades: List[Dict[str, Any]]) -> Tuple[str, str]:
     return summary, json.dumps(json_data)
 
 
+def format_key_dates(event: Dict[str, Any], markets: List[Dict[str, Any]]) -> Tuple[str, str]:
+    """Extract and format key dates from event and market data.
+    
+    Args:
+        event: Event data with open_time, close_time, etc.
+        markets: List of market data
+        
+    Returns:
+        Tuple of (richtext_summary, json_data)
+    """
+    key_dates = []
+    
+    # Extract from event
+    open_time = event.get("open_time", "")
+    close_time = event.get("close_time", "")
+    strike_date = event.get("strike_date", "")
+    
+    def format_date(date_str: str, label: str) -> Optional[Dict[str, Any]]:
+        if not date_str:
+            return None
+        try:
+            if isinstance(date_str, str):
+                # Handle ISO format
+                dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                return {
+                    "date": dt.strftime("%Y-%m-%d"),
+                    "date_readable": dt.strftime("%B %d, %Y"),
+                    "event": label,
+                    "description": f"Market {label.lower()}"
+                }
+        except:
+            pass
+        return None
+    
+    # Add event dates
+    if open_time:
+        d = format_date(open_time, "Opened")
+        if d:
+            key_dates.append(d)
+    
+    if close_time:
+        d = format_date(close_time, "Closes")
+        if d:
+            key_dates.append(d)
+    
+    if strike_date:
+        d = format_date(strike_date, "Strike Date")
+        if d:
+            key_dates.append(d)
+    
+    # Extract from markets (expiration times)
+    for m in markets[:1]:  # Just first market
+        exp_time = m.get("latest_expiration_time", "") or m.get("expiration_time", "")
+        if exp_time:
+            d = format_date(exp_time, "Expiration")
+            if d and d not in key_dates:
+                key_dates.append(d)
+    
+    # Sort by date
+    key_dates.sort(key=lambda x: x["date"])
+    
+    # Build richtext
+    if key_dates:
+        richtext = "<ul class='key-dates-list'>"
+        for d in key_dates:
+            richtext += f"<li><strong>{d['event']}:</strong> {d['date_readable']}</li>"
+        richtext += "</ul>"
+    else:
+        richtext = "<p>No key dates available.</p>"
+    
+    return richtext, json.dumps(key_dates)
+
+
 def format_historical_track_record(settled_markets: List[Dict[str, Any]]) -> Tuple[str, str]:
     """Format settled markets into historical track record summary.
     
@@ -2281,6 +2354,11 @@ Use clear, professional language. Be specific with data points. Format for reada
         else:
             analysis["price_statistics_richtext"] = "<p>No price statistics available.</p>"
             analysis["price_statistics_json"] = "{}"
+
+        # Phase 11: Format key dates
+        key_dates_richtext, key_dates_json = format_key_dates(event, markets)
+        analysis["key_dates_richtext"] = key_dates_richtext
+        analysis["key_dates_json"] = key_dates_json
 
         # Calculate metrics
         edge = self._calculate_edge(model_probability, market_probability)
