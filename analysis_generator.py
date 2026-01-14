@@ -1146,9 +1146,15 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
             indices = [0, total_candles // 2, total_candles - 1]
             for i in indices:
                 c = candlesticks[i]
+                ts = c.get("end_period_ts", 0)
+                # Convert Unix timestamp to human-readable date for LLM
+                try:
+                    date_str = datetime.fromtimestamp(ts).strftime("%B %d, %Y %I:%M %p")
+                except (ValueError, OSError):
+                    date_str = "unknown"
                 sample_candles.append({
-                    "ts": c.get("end_period_ts", 0),
-                    "price": prices[i] / 100 if prices[i] > 1 else prices[i],
+                    "date": date_str,
+                    "price": f"{(prices[i] / 100 if prices[i] > 1 else prices[i]) * 100:.1f}%",
                     "volume": volumes[i]
                 })
         
