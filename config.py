@@ -87,6 +87,7 @@ class GeminiConfig(BaseModel):
     """Google Gemini API configuration."""
     api_key: str = Field(default="", description="Gemini API key")
     model: str = Field(default="gemini-2.5-flash", description="Gemini model to use")
+    pro_model: str = Field(default="gemini-2.5-pro", description="Gemini Pro model for advanced analysis")
     
     @property
     def is_configured(self) -> bool:
@@ -188,7 +189,8 @@ class BotConfig(BaseSettings):
         
         gemini_config = GeminiConfig(
             api_key=os.getenv("GEMINI_API_KEY", ""),
-            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            pro_model=os.getenv("GEMINI_PRO_MODEL", "gemini-2.5-pro")
         )
         
         exa_config = ExaConfig(

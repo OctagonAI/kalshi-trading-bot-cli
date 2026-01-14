@@ -477,6 +477,61 @@ class KalshiClient:
             logger.error(f"Error signing message: {e}")
             raise
     
+    async def get_market_candlesticks(
+        self,
+        market_ticker: str,
+        start_ts: Optional[int] = None,
+        end_ts: Optional[int] = None,
+        period_interval: int = 60  # 60 minutes = 1 hour
+    ) -> List[Dict[str, Any]]:
+        """Get candlestick data for a specific market.
+        
+        Args:
+            market_ticker: The market ticker (e.g., 'INXD-24JAN01')
+            start_ts: Start timestamp in Unix seconds (default: 30 days ago)
+            end_ts: End timestamp in Unix seconds (default: now)
+            period_interval: Candlestick period in minutes (1, 60, or 1440)
+            
+        Returns:
+            List of candlestick data points
+        """
+        try:
+            # Default to last 30 days if not specified
+            now_ts = int(time.time())
+            if end_ts is None:
+                end_ts = now_ts
+            if start_ts is None:
+                start_ts = now_ts - (30 * 24 * 60 * 60)  # 30 days ago
+            
+            headers = await self._get_headers("GET", "/trade-api/v2/markets/candlesticks")
+            params = {
+                "market_tickers": market_ticker,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+                "period_interval": period_interval
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/markets/candlesticks",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            markets = data.get("markets", [])
+            
+            if markets and len(markets) > 0:
+                candlesticks = markets[0].get("candlesticks", [])
+                logger.info(f"Retrieved {len(candlesticks)} candlesticks for {market_ticker}")
+                return candlesticks
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error getting candlesticks for {market_ticker}: {e}")
+            return []
+    
     async def close(self):
         """Close the HTTP client."""
         if self.client:

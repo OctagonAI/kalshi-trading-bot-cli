@@ -139,6 +139,54 @@ class KalshiDataExporter:
             logger.error(f"Error signing message: {e}")
             raise
     
+    async def fetch_market_candlesticks(
+        self,
+        market_ticker: str,
+        period_interval: int = 60  # 60 minutes = 1 hour
+    ) -> List[Dict[str, Any]]:
+        """Fetch candlestick data for a market.
+        
+        Args:
+            market_ticker: The market ticker
+            period_interval: Candlestick period in minutes (1, 60, or 1440)
+            
+        Returns:
+            List of candlestick data points
+        """
+        try:
+            # Default to last 30 days
+            now_ts = int(time.time())
+            start_ts = now_ts - (30 * 24 * 60 * 60)  # 30 days ago
+            
+            headers = await self._get_headers("GET", "/trade-api/v2/markets/candlesticks")
+            params = {
+                "market_tickers": market_ticker,
+                "start_ts": start_ts,
+                "end_ts": now_ts,
+                "period_interval": period_interval
+            }
+            
+            response = await self.client.get(
+                "/trade-api/v2/markets/candlesticks",
+                headers=headers,
+                params=params
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            markets = data.get("markets", [])
+            
+            if markets and len(markets) > 0:
+                candlesticks = markets[0].get("candlesticks", [])
+                logger.info(f"Retrieved {len(candlesticks)} candlesticks for {market_ticker}")
+                return candlesticks
+            
+            return []
+            
+        except Exception as e:
+            logger.warning(f"Could not fetch candlesticks for {market_ticker}: {e}")
+            return []
+    
     async def fetch_all_series(self) -> List[Dict[str, Any]]:
         """Fetch all series from Kalshi API with pagination.
         
@@ -976,8 +1024,16 @@ class KalshiDataExporter:
                 if should_run_analysis and markets_by_event is not None:
                     logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
                     event_markets = markets_by_event.get(event_ticker, [])
+                    
+                    # Fetch candlestick data for chart analysis
+                    candlesticks = []
+                    if event_markets:
+                        market_ticker = event_markets[0].get("ticker", "")
+                        if market_ticker:
+                            candlesticks = await self.fetch_market_candlesticks(market_ticker)
+                    
                     try:
-                        analysis = await self.analysis_generator.generate_analysis(event, event_markets)
+                        analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
                         # Add analysis fields to field_data (convert keys to Webflow format)
                         for key, value in analysis.items():
                             webflow_key = key.replace("_", "-")
@@ -1009,8 +1065,16 @@ class KalshiDataExporter:
                 if should_run_analysis and markets_by_event is not None:
                     logger.info(f"Generating analysis ({analysis_count + 1}): {event_ticker}")
                     event_markets = markets_by_event.get(event_ticker, [])
+                    
+                    # Fetch candlestick data for chart analysis
+                    candlesticks = []
+                    if event_markets:
+                        market_ticker = event_markets[0].get("ticker", "")
+                        if market_ticker:
+                            candlesticks = await self.fetch_market_candlesticks(market_ticker)
+                    
                     try:
-                        analysis = await self.analysis_generator.generate_analysis(event, event_markets)
+                        analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
                         # Add analysis fields to field_data
                         for key, value in analysis.items():
                             webflow_key = key.replace("_", "-")
@@ -1079,8 +1143,15 @@ class KalshiDataExporter:
             logger.info(f"Generating analysis ({analysis_count + 1}/{max_analyses}): {event_ticker}")
             event_markets = markets_by_event.get(event_ticker, [])
             
+            # Fetch candlestick data for chart analysis
+            candlesticks = []
+            if event_markets:
+                market_ticker = event_markets[0].get("ticker", "")
+                if market_ticker:
+                    candlesticks = await self.fetch_market_candlesticks(market_ticker)
+            
             try:
-                analysis = await self.analysis_generator.generate_analysis(event, event_markets)
+                analysis = await self.analysis_generator.generate_analysis(event, event_markets, candlesticks)
                 # Merge event data with analysis
                 analyzed_event = {**event, **analysis}
                 analyzed_events.append(analyzed_event)
@@ -1201,6 +1272,8 @@ class KalshiDataExporter:
                 "what_could_change_subtitle", "what_could_change_paragraph_richtext",
                 # I) Octagon Analysis - Section 10
                 "transparency_subtitle", "transparency_paragraph_richtext",
+                # J) Chart Analysis
+                "chart_analysis_richtext", "candlestick_data_json",
             ]
             
             contracts_fields = [

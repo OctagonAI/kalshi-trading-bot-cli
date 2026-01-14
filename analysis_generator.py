@@ -588,22 +588,26 @@ If no meaningful discussion exists in the content above, respond with exactly: "
             if result and "NO_DISCUSSION" not in result:
                 return result
         
-        # Fallback: Use Google Search to find discussions about this topic
-        logger.info(f"No Kalshi discussion found, searching web for: {event_title}")
+        # Fallback: Use Octagon to find discussions about this topic
+        logger.info(f"No Kalshi discussion found, searching for: {event_title}")
         
-        search_prompt = f"""Search for recent discussions, opinions, and analysis about: "{event_title}"
+        octagon = self._init_octagon()
+        question = f"""What are people discussing and debating about: "{event_title}"?
 
 Look for:
 - Social media discussions (Twitter/X, Reddit, forums)
 - News commentary and expert opinions
-- Prediction market discussions from other platforms
+- Prediction market discussions
 
-Summarize in 2-3 sentences the main viewpoints and arguments being made about this topic.
-If this is a niche topic with limited discussion, note what experts or analysts are saying about it."""
+Summarize in 2-3 sentences the main viewpoints and arguments."""
 
-        result = await self._gemini_generate(search_prompt, use_search_grounding=True)
+        result = await octagon.research_question(question, "")
         
         if result:
+            # Truncate to 2-3 sentences if too long
+            sentences = result.split('. ')
+            if len(sentences) > 4:
+                result = '. '.join(sentences[:3]) + '.'
             return result
         
         return "Limited public discussion available for this market."
@@ -615,7 +619,7 @@ If this is a niche topic with limited discussion, note what experts or analysts 
         series_category: str,
         market_probability: float
     ) -> Dict[str, str]:
-        """Generate 5 research questions using Gemini with Google Search grounding.
+        """Generate 5 research questions using Gemini.
         
         Uses Gemini's structured output feature to guarantee valid JSON.
         
@@ -635,12 +639,10 @@ Subtitle: {event_subtitle}
 Category: {series_category}
 Current market odds: {market_probability:.1f}% YES
 
-Search Google to understand what questions and topics people are currently searching for related to this market topic. Look at related searches, news headlines, and common angles being covered.
-
-Generate exactly 5 questions that align with real search demand - questions people are actively searching for online.
+Generate exactly 5 research questions that would help someone understand this prediction market.
 
 Requirements:
-- Use natural, conversational phrasing (how people actually search)
+- Use natural, conversational phrasing
 - Include specific names, dates, or terms from the market title
 - Each question should be standalone and searchable
 
@@ -652,7 +654,7 @@ Guidelines for each question:
 - q5: Question about timeline or upcoming events"""
 
         result, _ = await self._gemini_generate_structured(
-            prompt, ResearchQuestions, use_search_grounding=True
+            prompt, ResearchQuestions, use_search_grounding=False
         )
         
         if result:
@@ -673,6 +675,30 @@ Guidelines for each question:
             "q4": f"What data supports predictions about {event_title}?",
             "q5": f"When will {event_title} be decided?"
         }
+    
+    def _format_paragraphs_as_html(self, paragraphs: List[str]) -> str:
+        """Format paragraphs as HTML for richtext display.
+        
+        Args:
+            paragraphs: List of paragraph strings
+            
+        Returns:
+            HTML string with paragraphs
+        """
+        if not paragraphs:
+            return ""
+        
+        html_parts = []
+        for para in paragraphs:
+            # Convert [1], [2], etc. to superscript for any inline citations
+            formatted_para = re.sub(
+                r'\[(\d+)\]',
+                r'<sup>[\1]</sup>',
+                para
+            )
+            html_parts.append(f"<p>{formatted_para}</p>")
+        
+        return "".join(html_parts)
     
     def _format_paragraphs_with_footnotes(
         self,
@@ -727,10 +753,9 @@ Guidelines for each question:
         event_title: str,
         event_subtitle: str
     ) -> Dict[str, Any]:
-        """Research a single question using Gemini with Google Search grounding.
+        """Research a single question using Octagon Deep Research.
         
-        Uses Gemini's structured output feature to guarantee valid JSON.
-        Sources are extracted from Gemini's grounding metadata (not hallucinated).
+        Uses Octagon for research, then Gemini for structured formatting.
         
         Args:
             question: The research question to answer
@@ -740,36 +765,41 @@ Guidelines for each question:
         Returns:
             Dict with 'subtitle', 'table_data', and 'paragraph' keys
         """
-        prompt = f"""Research question: {question}
+        # Step 1: Use Octagon Deep Research for the actual research
+        octagon = self._init_octagon()
+        context = f'Prediction market: "{event_title}" which resolves {event_subtitle}'
+        research_text = await octagon.research_question(question, context)
+        
+        if not research_text:
+            return {
+                "subtitle": question[:50],
+                "table_data": [],
+                "paragraph": "Research data not available."
+            }
+        
+        # Step 2: Use Gemini to format the research into structured output
+        format_prompt = f"""Based on this research, extract and format the key findings.
 
-Context: This research is for the prediction market "{event_title}" which resolves {event_subtitle}.
+Research findings:
+{research_text}
 
-Search for current, authoritative information to answer this question thoroughly.
-
-Provide:
+Format this into:
 - subtitle: A concise 5-10 word title for this research section (plain text)
 - table_data: Exactly 3 key data points. Each should have:
-  - label: Short metric name (e.g., "Ramp Valuation", "Brex Revenue Target") - plain text only
-  - value: The data with source in parentheses (e.g., "$22.5B (Bloomberg, July 2025)") - plain text only
-- paragraphs: 2-3 separate paragraphs analyzing the data. Each paragraph should:
-  - Be a complete thought (3-5 sentences)
-  - Include inline citations like [1], [2] referencing sources from your search results
-  - Explain what the data means for the prediction market outcome
+  - label: Short metric name (plain text only)
+  - value: The data with source in parentheses (plain text only)
+- paragraphs: 2-3 separate paragraphs summarizing the key findings
 
-Example paragraph format:
-"The Federal Reserve held rates steady at 5.25-5.50% in their January meeting [1]. Chair Powell indicated that rate cuts remain unlikely until inflation shows sustained progress toward the 2% target [2]. This suggests the market's current pricing of 65% for a March cut may be overly optimistic."
+IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only.
+Preserve any source citations from the research."""
 
-IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
-
-        result, grounding_sources = await self._gemini_generate_structured(
-            prompt, QuestionResearch, use_search_grounding=True
+        result, _ = await self._gemini_generate_structured(
+            format_prompt, QuestionResearch, use_search_grounding=False
         )
         
         if result:
-            # Format paragraphs with real grounding sources as HTML
-            formatted_paragraph = self._format_paragraphs_with_footnotes(
-                result.paragraphs, grounding_sources
-            )
+            # Format paragraphs as HTML
+            formatted_paragraph = self._format_paragraphs_as_html(result.paragraphs)
             
             return {
                 "subtitle": result.subtitle,
@@ -777,14 +807,12 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
                 "paragraph": formatted_paragraph
             }
         
-        # Fallback: try unstructured generation
-        logger.warning("Structured output failed for question research, using fallback")
-        response = await self._gemini_generate(prompt, use_search_grounding=True)
-        
+        # Fallback: return raw research text
+        logger.warning("Structured formatting failed, using raw research text")
         return {
             "subtitle": question[:50],
             "table_data": [],
-            "paragraph": clean_markdown_response(response) if response else "Research data not available."
+            "paragraph": clean_markdown_response(research_text)
         }
     
     async def research_what_could_change(
@@ -795,8 +823,7 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
     ) -> Dict[str, str]:
         """Research key catalysts that could change the market.
         
-        Uses Gemini's structured output feature to guarantee valid JSON.
-        Sources are extracted from Gemini's grounding metadata (not hallucinated).
+        Uses Octagon for research, then Gemini for structured formatting.
         
         Args:
             event_title: Title of the event
@@ -806,44 +833,55 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
         Returns:
             Dict with 'subtitle' and 'paragraph' keys
         """
-        prompt = f"""Prediction market: "{event_title}"
-Current market probability: {market_probability:.1f}% YES
+        # Step 1: Use Octagon Deep Research for catalyst research
+        question = f"""What are the key catalysts or events that could significantly change the probability of this prediction market?
+
+Prediction market: "{event_title}"
+Current probability: {market_probability:.1f}% YES
 Settlement date: {close_time}
 
-Research and identify the key catalysts or events that could significantly change the probability of this market.
+Please identify:
+1. Bullish catalysts (could push YES higher) with specific events and dates
+2. Bearish catalysts (could push NO higher) with specific events and dates
+3. Timeline of key dates to watch before settlement"""
 
-Provide:
+        octagon = self._init_octagon()
+        research_text = await octagon.research_question(question, "")
+        
+        if not research_text:
+            return {
+                "subtitle": "Key Catalysts",
+                "paragraph": "Catalyst analysis not available."
+            }
+        
+        # Step 2: Use Gemini to format into structured output
+        format_prompt = f"""Based on this research, format the key catalysts.
+
+Research findings:
+{research_text}
+
+Format this into:
 - subtitle: A concise section title (e.g., "Key Catalysts", "Events to Watch")
-- paragraphs: 2-3 separate paragraphs covering:
-  - Paragraph 1: Bullish catalysts (could push YES higher) with specific events and dates [1], [2]
-  - Paragraph 2: Bearish catalysts (could push NO higher) with specific events and dates [3], [4]
-  - Paragraph 3: Timeline of key dates to watch before settlement
-  - Use inline citations like [1], [2] referencing sources from your search results
+- paragraphs: 2-3 separate paragraphs summarizing the catalysts
 
 IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
-        result, grounding_sources = await self._gemini_generate_structured(
-            prompt, CatalystResearch, use_search_grounding=True
+        result, _ = await self._gemini_generate_structured(
+            format_prompt, CatalystResearch, use_search_grounding=False
         )
         
         if result:
-            # Format paragraphs with real grounding sources as HTML
-            formatted_paragraph = self._format_paragraphs_with_footnotes(
-                result.paragraphs, grounding_sources
-            )
-            
+            formatted_paragraph = self._format_paragraphs_as_html(result.paragraphs)
             return {
                 "subtitle": result.subtitle,
                 "paragraph": formatted_paragraph
             }
         
-        # Fallback
-        logger.warning("Structured output failed for catalysts, using fallback")
-        response = await self._gemini_generate(prompt, use_search_grounding=True)
-        
+        # Fallback: return raw research text
+        logger.warning("Structured formatting failed for catalysts, using raw text")
         return {
             "subtitle": "Key Catalysts",
-            "paragraph": clean_markdown_response(response) if response else "Catalyst analysis not available."
+            "paragraph": clean_markdown_response(research_text)
         }
     
     def generate_transparency_section(self) -> Dict[str, str]:
@@ -862,6 +900,126 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
 **Updates:** Analysis is generated periodically and may not reflect the most recent developments. Always verify critical information from primary sources before making decisions."""
         }
+    
+    async def _gemini_pro_generate(self, prompt: str) -> str:
+        """Generate content using Gemini Pro model for advanced analysis.
+        
+        Args:
+            prompt: The prompt to send to Gemini Pro
+            
+        Returns:
+            Generated text response
+        """
+        client = self._init_gemini()
+        if not client:
+            logger.warning("Gemini not configured, skipping Pro generation")
+            return ""
+        
+        try:
+            from google.genai import types
+            
+            response = client.models.generate_content(
+                model=self.gemini_config.pro_model,
+                contents=prompt,
+            )
+            
+            return response.text or ""
+            
+        except Exception as e:
+            logger.error(f"Error generating content with Gemini Pro: {e}")
+            return ""
+    
+    async def interpret_candlestick_chart(
+        self,
+        candlesticks: List[Dict[str, Any]],
+        event_title: str,
+        market_ticker: str
+    ) -> str:
+        """Interpret candlestick chart data using Gemini Pro.
+        
+        Args:
+            candlesticks: List of candlestick data points from Kalshi API
+            event_title: Title of the event for context
+            market_ticker: Market ticker for context
+            
+        Returns:
+            HTML paragraph with chart interpretation
+        """
+        if not candlesticks:
+            return "<p>No historical price data available for this market.</p>"
+        
+        # Summarize the candlestick data for the LLM
+        total_candles = len(candlesticks)
+        
+        # Get price range and trends
+        prices = []
+        volumes = []
+        for candle in candlesticks:
+            price = candle.get("price")
+            if price is not None:
+                # Convert to cents if needed (Kalshi uses cents)
+                if isinstance(price, dict):
+                    price = price.get("close", 0)
+                prices.append(float(price) if price else 0)
+            vol = candle.get("volume", 0)
+            volumes.append(vol if vol else 0)
+        
+        if not prices:
+            return "<p>Unable to interpret chart data - no price information available.</p>"
+        
+        # Calculate summary statistics
+        min_price = min(prices) / 100 if max(prices) > 1 else min(prices)  # Convert cents to dollars
+        max_price = max(prices) / 100 if max(prices) > 1 else max(prices)
+        latest_price = prices[-1] / 100 if prices[-1] > 1 else prices[-1]
+        first_price = prices[0] / 100 if prices[0] > 1 else prices[0]
+        total_volume = sum(volumes)
+        
+        # Determine trend
+        price_change = latest_price - first_price
+        trend = "upward" if price_change > 0.05 else "downward" if price_change < -0.05 else "sideways"
+        
+        # Sample some candlesticks for context (first, middle, last)
+        sample_candles = []
+        if total_candles >= 3:
+            indices = [0, total_candles // 2, total_candles - 1]
+            for i in indices:
+                c = candlesticks[i]
+                sample_candles.append({
+                    "ts": c.get("end_period_ts", 0),
+                    "price": prices[i] / 100 if prices[i] > 1 else prices[i],
+                    "volume": volumes[i]
+                })
+        
+        prompt = f"""You are a financial analyst interpreting a prediction market price chart.
+
+Market: "{event_title}" ({market_ticker})
+
+Chart Summary:
+- Total data points: {total_candles}
+- Price range: ${min_price:.2f} to ${max_price:.2f} (YES probability as decimal)
+- Current price: ${latest_price:.2f} ({latest_price*100:.1f}% YES probability)
+- Starting price: ${first_price:.2f} ({first_price*100:.1f}% YES probability)
+- Overall trend: {trend}
+- Total volume traded: {total_volume:,} contracts
+
+Sample data points (early, middle, recent):
+{json.dumps(sample_candles, indent=2)}
+
+Write a 2-3 paragraph technical analysis of this prediction market's price action:
+1. Describe the overall price trend and any significant movements
+2. Note volume patterns and what they suggest about market conviction
+3. Identify any support/resistance levels or key price points
+4. Provide insight into what the chart suggests about market sentiment
+
+Focus on factual observations. Do not give trading advice.
+IMPORTANT: Do NOT use markdown formatting. Use plain text only."""
+
+        analysis = await self._gemini_pro_generate(prompt)
+        
+        if analysis:
+            return clean_markdown_response(analysis)
+        
+        return f"<p>The market has traded between {min_price*100:.1f}% and {max_price*100:.1f}% YES probability, with a current reading of {latest_price*100:.1f}%. Total volume: {total_volume:,} contracts.</p>"
     
     async def run_octagon_research(
         self,
@@ -1147,19 +1305,22 @@ Use clear, professional language. Be specific with data points. Format for reada
     async def generate_analysis(
         self,
         event: Dict[str, Any],
-        markets: List[Dict[str, Any]]
+        markets: List[Dict[str, Any]],
+        candlesticks: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Generate complete analysis for an event.
-        
+
         This is the main orchestration method that:
         1. Runs parallel API calls (Exa crawl, Octagon research, question generation)
-        2. Researches each question with Gemini + Google Search
+        2. Researches each question with Octagon Deep Research
         3. Synthesizes executive summary and key takeaway
-        
+        4. Interprets candlestick chart data with Gemini Pro
+
         Args:
             event: Event data dictionary with title, subtitle, ticker, etc.
             markets: List of market data dictionaries for this event
-            
+            candlesticks: Optional list of candlestick data for chart analysis
+
         Returns:
             Dict containing all analysis fields ready for Webflow
         """
@@ -1322,6 +1483,19 @@ Use clear, professional language. Be specific with data points. Format for reada
             what_could_change.get("paragraph", ""),
             model_probability, market_probability
         )
+        
+        # Phase 6: Chart interpretation (if candlestick data provided)
+        if candlesticks:
+            logger.info(f"Phase 6: Interpreting chart data for {event_ticker}")
+            market_ticker = markets[0].get("ticker", "") if markets else ""
+            chart_analysis = await self.interpret_candlestick_chart(
+                candlesticks, event_title, market_ticker
+            )
+            analysis["chart_analysis_richtext"] = chart_analysis
+            analysis["candlestick_data_json"] = json.dumps(candlesticks)
+        else:
+            analysis["chart_analysis_richtext"] = "<p>No historical price data available.</p>"
+            analysis["candlestick_data_json"] = "[]"
         
         # Calculate metrics
         edge = self._calculate_edge(model_probability, market_probability)

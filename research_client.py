@@ -111,6 +111,61 @@ class OctagonClient:
             logger.error(f"Error researching event {event.get('event_ticker', '')}: {e}")
             return f"Error researching event: {str(e)}"
     
+    async def research_question(
+        self,
+        question: str,
+        context: str = ""
+    ) -> str:
+        """
+        Research a specific question using Octagon Deep Research.
+        
+        Args:
+            question: The research question to answer
+            context: Additional context about the prediction market
+            
+        Returns:
+            Research response as a string
+        """
+        try:
+            prompt = f"""You are a research analyst providing factual, well-sourced information.
+
+Question: {question}
+
+{f"Context: {context}" if context else ""}
+
+Please provide:
+1. A comprehensive answer with specific facts, data points, and statistics
+2. Include source references where possible (e.g., "according to Bloomberg", "per NASA data")
+3. Organize your response into 2-3 clear paragraphs
+4. Include a brief summary of key data points at the start
+
+Focus on current, accurate information. Cite your sources inline."""
+
+            logger.info(f"Researching question: {question[:80]}...")
+            
+            response = await self.client.responses.create(
+                model="octagon-deep-research-agent",
+                input=[{"role": "user", "content": prompt}],
+                reasoning={"effort": "low"},
+                text={"verbosity": "medium"}
+            )
+
+            logger.info(f"Completed research for question")
+
+            try:
+                from openai_utils import extract_completed_message_text
+                content_text = extract_completed_message_text(response)
+                if content_text:
+                    return content_text
+            except Exception:
+                pass
+
+            return ""
+            
+        except Exception as e:
+            logger.error(f"Error researching question: {e}")
+            return f"Error researching question: {str(e)}"
+    
     async def close(self):
         """Close the client (OpenAI client doesn't need explicit closing)."""
-        pass 
+        pass
