@@ -48,6 +48,8 @@ def slugify(text: str) -> str:
     # Remove leading/trailing hyphens
     slug = slug.strip('-')
     # Collapse multiple hyphens
+
+
     slug = re.sub(r'-+', '-', slug)
     return slug
 

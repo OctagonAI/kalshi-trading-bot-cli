@@ -17,6 +17,84 @@ from config import GeminiConfig, ExaConfig, OctagonConfig
 from research_client import OctagonClient
 
 
+def transform_candlesticks_for_lightweight_charts(
+    kalshi_candlesticks: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Transform Kalshi candlestick data to TradingView Lightweight Charts format.
+    
+    Lightweight Charts expects:
+        { "time": 1704153600, "open": 0.50, "high": 0.51, "low": 0.49, "close": 0.51 }
+    
+    Args:
+        kalshi_candlesticks: Raw candlestick data from Kalshi API
+        
+    Returns:
+        List of candlesticks formatted for Lightweight Charts
+    """
+    if not kalshi_candlesticks:
+        return []
+    
+    formatted = []
+    for candle in kalshi_candlesticks:
+        ts = candle.get("end_period_ts", 0)
+        if not ts:
+            continue
+        
+        price = candle.get("price")
+        volume = candle.get("volume", 0)
+        
+        # Handle different price formats from Kalshi API
+        if isinstance(price, dict):
+            # OHLC format: {"open": 5025, "high": 5125, "low": 4950, "close": 5075}
+            open_price = price.get("open", 0)
+            high_price = price.get("high", 0)
+            low_price = price.get("low", 0)
+            close_price = price.get("close", 0)
+            
+            # Convert from cents to probability (0-1)
+            divisor = 100 if max(open_price, high_price, low_price, close_price) <= 100 else 10000
+            
+            formatted.append({
+                "time": ts,
+                "open": round(open_price / divisor, 4),
+                "high": round(high_price / divisor, 4),
+                "low": round(low_price / divisor, 4),
+                "close": round(close_price / divisor, 4),
+                "volume": volume
+            })
+        elif isinstance(price, (int, float)):
+            # Single price value - use for all OHLC
+            prob = price / 100 if price > 1 else price
+            formatted.append({
+                "time": ts,
+                "open": round(prob, 4),
+                "high": round(prob, 4),
+                "low": round(prob, 4),
+                "close": round(prob, 4),
+                "volume": volume
+            })
+        else:
+            # Try to extract from yes_bid if price not available
+            yes_bid = candle.get("yes_bid", {})
+            if isinstance(yes_bid, dict):
+                close_price = yes_bid.get("close", 0)
+                divisor = 100 if close_price <= 100 else 10000
+                prob = close_price / divisor
+                formatted.append({
+                    "time": ts,
+                    "open": round(prob, 4),
+                    "high": round(prob, 4),
+                    "low": round(prob, 4),
+                    "close": round(prob, 4),
+                    "volume": volume
+                })
+    
+    # Sort by time ascending (required by Lightweight Charts)
+    formatted.sort(key=lambda x: x["time"])
+    
+    return formatted
+
+
 # ============================================================================
 # Pydantic Models for Structured Outputs
 # ============================================================================
@@ -1762,7 +1840,9 @@ Use clear, professional language. Be specific with data points. Format for reada
                 anomalies, anomaly_research
             )
             analysis["chart_analysis_richtext"] = chart_analysis
-            analysis["candlestick_data_json"] = json.dumps(candlesticks)
+            # Transform to Lightweight Charts format for frontend
+            chart_data = transform_candlesticks_for_lightweight_charts(candlesticks)
+            analysis["candlestick_data_json"] = json.dumps(chart_data)
         else:
             analysis["chart_analysis_richtext"] = "<p>No historical price data available.</p>"
             analysis["candlestick_data_json"] = "[]"
