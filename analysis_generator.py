@@ -619,9 +619,10 @@ Summarize in 2-3 sentences the main viewpoints and arguments."""
         series_category: str,
         market_probability: float
     ) -> Dict[str, str]:
-        """Generate 5 research questions using Gemini.
+        """Generate 5 timely, mutually exclusive research questions.
         
-        Uses Gemini's structured output feature to guarantee valid JSON.
+        Uses Octagon to understand current context, then Gemini to generate
+        structured questions that don't overlap.
         
         Args:
             event_title: Title of the event
@@ -632,26 +633,46 @@ Summarize in 2-3 sentences the main viewpoints and arguments."""
         Returns:
             Dict with keys q1-q5 containing the research questions
         """
-        prompt = f"""You are generating research questions for a prediction market analysis page.
+        # Step 1: Use Octagon to get current context on this topic
+        octagon = self._init_octagon()
+        context_question = f"""What are people currently searching for, discussing, and debating about: "{event_title}"?
+
+Identify:
+1. The most recent news and developments (last 7 days)
+2. Key data points people are looking for
+3. Expert opinions being cited
+4. Upcoming events or deadlines
+5. Common questions and concerns
+
+Be specific about dates, names, and current events."""
+
+        current_context = await octagon.research_question(context_question, "")
+        
+        # Step 2: Use Gemini to generate 5 mutually exclusive questions based on the context
+        prompt = f"""You are generating 5 research questions for a prediction market analysis page.
 
 Market: "{event_title}"
 Subtitle: {event_subtitle}
 Category: {series_category}
 Current market odds: {market_probability:.1f}% YES
 
-Generate exactly 5 research questions that would help someone understand this prediction market.
+Current context and trending topics:
+{current_context[:3000] if current_context else "No current context available."}
 
-Requirements:
+Generate exactly 5 MUTUALLY EXCLUSIVE research questions. Each question must:
+- Cover a completely different angle (NO overlap between questions)
+- Be timely and reference current events, dates, or recent developments
 - Use natural, conversational phrasing
-- Include specific names, dates, or terms from the market title
-- Each question should be standalone and searchable
+- Include specific names, dates, or terms from the market
 
-Guidelines for each question:
-- q1: Direct question about the outcome (e.g., "Will X happen?")
-- q2: Question about recent news or developments
-- q3: Question about expert predictions or forecasts
-- q4: Question about key data, statistics, or indicators
-- q5: Question about timeline or upcoming events"""
+The 5 questions MUST cover these distinct areas:
+- q1: Direct question about the core outcome
+- q2: Recent news/developments (specific to last week)
+- q3: Expert predictions and forecasts (cite specific sources)
+- q4: Key data, statistics, or indicators (specific metrics)
+- q5: Timeline and upcoming catalysts (specific dates)
+
+IMPORTANT: Questions must NOT overlap. Each should be independently researchable."""
 
         result, _ = await self._gemini_generate_structured(
             prompt, ResearchQuestions, use_search_grounding=False
