@@ -960,15 +960,19 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
         self,
         candlesticks: List[Dict[str, Any]],
         event_title: str,
-        market_ticker: str
+        event_subtitle: str,
+        market_ticker: str,
+        current_state_summary: str = ""
     ) -> str:
         """Interpret candlestick chart data using Gemini Pro.
-        
+
         Args:
             candlesticks: List of candlestick data points from Kalshi API
             event_title: Title of the event for context
+            event_subtitle: Subtitle explaining the resolution criteria
             market_ticker: Market ticker for context
-            
+            current_state_summary: Current state of affairs from Octagon research
+
         Returns:
             HTML paragraph with chart interpretation
         """
@@ -1017,9 +1021,16 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
                     "volume": volumes[i]
                 })
         
+        # Truncate current state summary for prompt
+        context_snippet = current_state_summary[:1500] if current_state_summary else "No additional context available."
+        
         prompt = f"""You are a financial analyst interpreting a prediction market price chart.
 
 Market: "{event_title}" ({market_ticker})
+Resolution: {event_subtitle}
+
+Current Context (recent news and developments):
+{context_snippet}
 
 Chart Summary:
 - Total data points: {total_candles}
@@ -1034,9 +1045,10 @@ Sample data points (early, middle, recent):
 
 Write a 2-3 paragraph technical analysis of this prediction market's price action:
 1. Describe the overall price trend and any significant movements
-2. Note volume patterns and what they suggest about market conviction
-3. Identify any support/resistance levels or key price points
-4. Provide insight into what the chart suggests about market sentiment
+2. Connect price movements to the current context/news when relevant
+3. Note volume patterns and what they suggest about market conviction
+4. Identify any support/resistance levels or key price points
+5. Provide insight into what the chart suggests about market sentiment
 
 Focus on factual observations. Do not give trading advice.
 IMPORTANT: Do NOT use markdown formatting. Use plain text only."""
@@ -1518,8 +1530,9 @@ Use clear, professional language. Be specific with data points. Format for reada
         if candlesticks:
             logger.info(f"Phase 6: Interpreting chart data for {event_ticker}")
             market_ticker = markets[0].get("ticker", "") if markets else ""
+            current_state = analysis.get("current_state_summary_richtext", "")
             chart_analysis = await self.interpret_candlestick_chart(
-                candlesticks, event_title, market_ticker
+                candlesticks, event_title, event_subtitle, market_ticker, current_state
             )
             analysis["chart_analysis_richtext"] = chart_analysis
             analysis["candlestick_data_json"] = json.dumps(candlesticks)
