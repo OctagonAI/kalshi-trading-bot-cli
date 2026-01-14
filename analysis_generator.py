@@ -36,26 +36,17 @@ class TableDataItem(BaseModel):
     value: str = Field(description="Data value with source in parentheses (plain text, no markdown)")
 
 
-class SourceCitation(BaseModel):
-    """A source citation for footnotes."""
-    number: int = Field(description="Citation number (1, 2, 3, etc.)")
-    source: str = Field(description="Source name (e.g., 'Bloomberg', 'Reuters', 'Federal Reserve')")
-    detail: str = Field(description="Additional detail like date or article title")
-
-
 class QuestionResearch(BaseModel):
     """Research findings for a single question."""
     subtitle: str = Field(description="A concise 5-10 word title for this research section")
     table_data: List[TableDataItem] = Field(description="3 key data points with sources")
     paragraphs: List[str] = Field(description="2-3 paragraphs with inline citations like [1], [2]")
-    footnotes: List[SourceCitation] = Field(description="Source citations referenced in the paragraphs")
 
 
 class CatalystResearch(BaseModel):
     """Key catalysts that could change market probability."""
     subtitle: str = Field(description="Section title, e.g., 'Key Catalysts'")
     paragraphs: List[str] = Field(description="2-3 paragraphs with inline citations like [1], [2]")
-    footnotes: List[SourceCitation] = Field(description="Source citations referenced in the paragraphs")
 
 
 def clean_markdown_response(text: str) -> str:
@@ -360,12 +351,41 @@ class AnalysisGenerator:
             logger.error(f"Error generating content with Gemini: {e}")
             return ""
     
+    def _extract_grounding_sources(self, response) -> List[Dict[str, str]]:
+        """Extract grounding sources from Gemini response metadata.
+        
+        Args:
+            response: Gemini API response object
+            
+        Returns:
+            List of dicts with 'title' and 'uri' keys
+        """
+        sources = []
+        try:
+            # Access grounding metadata from the response
+            # The structure is: response.candidates[0].grounding_metadata.grounding_chunks
+            if hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                    metadata = candidate.grounding_metadata
+                    if hasattr(metadata, 'grounding_chunks') and metadata.grounding_chunks:
+                        for chunk in metadata.grounding_chunks:
+                            if hasattr(chunk, 'web') and chunk.web:
+                                sources.append({
+                                    "title": chunk.web.title or "",
+                                    "uri": chunk.web.uri or ""
+                                })
+        except Exception as e:
+            logger.warning(f"Failed to extract grounding sources: {e}")
+        
+        return sources
+    
     async def _gemini_generate_structured(
         self,
         prompt: str,
         response_schema: type[BaseModel],
         use_search_grounding: bool = False
-    ) -> Optional[BaseModel]:
+    ) -> tuple[Optional[BaseModel], List[Dict[str, str]]]:
         """Generate structured content using Gemini with JSON schema.
         
         Note: Gemini 2.5 does NOT support combining tools (grounding) with 
@@ -378,12 +398,12 @@ class AnalysisGenerator:
             use_search_grounding: Whether to use Google Search for grounding
             
         Returns:
-            Parsed Pydantic model instance, or None if generation fails
+            Tuple of (Parsed Pydantic model instance or None, list of grounding sources)
         """
         client = self._init_gemini()
         if not client:
             logger.warning("Gemini not configured, skipping generation")
-            return None
+            return None, []
         
         try:
             from google.genai import types
@@ -400,8 +420,18 @@ class AnalysisGenerator:
                 )
                 grounded_text = grounded_response.text or ""
                 
+                # Extract real grounding sources from the response
+                grounding_sources = self._extract_grounding_sources(grounded_response)
+                logger.info(f"Extracted {len(grounding_sources)} grounding sources from search")
+                
                 if not grounded_text:
-                    return None
+                    return None, grounding_sources
+                
+                # Build source reference for the formatting step
+                source_list = "\n".join([
+                    f"[{i+1}] {s['title']} - {s['uri']}"
+                    for i, s in enumerate(grounding_sources)
+                ]) if grounding_sources else "No sources available"
                 
                 # Step 2: Format into structured output
                 schema_json = response_schema.model_json_schema()
@@ -410,8 +440,13 @@ class AnalysisGenerator:
 Research findings:
 {grounded_text}
 
+Available sources (use these citation numbers in your paragraphs):
+{source_list}
+
 Format the above information according to this JSON schema:
 {json.dumps(schema_json, indent=2)}
+
+IMPORTANT: When citing sources in paragraphs, use the exact citation numbers [1], [2], etc. from the source list above. Only cite sources that are actually listed.
 
 Return ONLY valid JSON matching the schema."""
 
@@ -424,7 +459,7 @@ Return ONLY valid JSON matching the schema."""
                     )
                 )
                 
-                return response_schema.model_validate_json(structured_response.text)
+                return response_schema.model_validate_json(structured_response.text), grounding_sources
             else:
                 # Direct structured output without grounding
                 response = client.models.generate_content(
@@ -436,11 +471,11 @@ Return ONLY valid JSON matching the schema."""
                     )
                 )
                 
-                return response_schema.model_validate_json(response.text)
+                return response_schema.model_validate_json(response.text), []
             
         except Exception as e:
             logger.error(f"Error generating structured content with Gemini: {e}")
-            return None
+            return None, []
     
     async def summarize_contract_rules(
         self,
@@ -578,7 +613,7 @@ Guidelines for each question:
 - q4: Question about key data, statistics, or indicators
 - q5: Question about timeline or upcoming events"""
 
-        result = await self._gemini_generate_structured(
+        result, _ = await self._gemini_generate_structured(
             prompt, ResearchQuestions, use_search_grounding=True
         )
         
@@ -604,13 +639,13 @@ Guidelines for each question:
     def _format_paragraphs_with_footnotes(
         self,
         paragraphs: List[str],
-        footnotes: List[Dict[str, Any]]
+        grounding_sources: List[Dict[str, str]]
     ) -> str:
         """Format paragraphs and footnotes as HTML for richtext display.
         
         Args:
             paragraphs: List of paragraph strings with inline citations like [1], [2]
-            footnotes: List of citation dicts with 'number', 'source', 'detail'
+            grounding_sources: List of source dicts with 'title' and 'uri' from Gemini grounding
             
         Returns:
             HTML string with paragraphs and footnotes section
@@ -619,7 +654,7 @@ Guidelines for each question:
             return ""
         
         # Format paragraphs as HTML <p> tags
-        # Convert inline citations [1] to superscript links
+        # Convert inline citations [1] to superscript
         html_parts = []
         for para in paragraphs:
             # Convert [1], [2], etc. to superscript
@@ -630,18 +665,20 @@ Guidelines for each question:
             )
             html_parts.append(f"<p>{formatted_para}</p>")
         
-        # Add footnotes section if we have citations
-        if footnotes:
+        # Add footnotes section using real grounding sources
+        if grounding_sources:
             html_parts.append("<hr>")
             html_parts.append("<p><strong>Sources:</strong></p>")
             html_parts.append("<ol>")
-            for fn in sorted(footnotes, key=lambda x: x.get("number", 0)):
-                source = fn.get("source", "")
-                detail = fn.get("detail", "")
-                if source and detail:
-                    html_parts.append(f"<li>{source}: {detail}</li>")
-                elif source:
-                    html_parts.append(f"<li>{source}</li>")
+            for source in grounding_sources:
+                title = source.get("title", "")
+                uri = source.get("uri", "")
+                if title and uri:
+                    html_parts.append(f'<li><a href="{uri}">{title}</a></li>')
+                elif title:
+                    html_parts.append(f"<li>{title}</li>")
+                elif uri:
+                    html_parts.append(f'<li><a href="{uri}">{uri}</a></li>')
             html_parts.append("</ol>")
         
         return "".join(html_parts)
@@ -655,6 +692,7 @@ Guidelines for each question:
         """Research a single question using Gemini with Google Search grounding.
         
         Uses Gemini's structured output feature to guarantee valid JSON.
+        Sources are extracted from Gemini's grounding metadata (not hallucinated).
         
         Args:
             question: The research question to answer
@@ -677,32 +715,22 @@ Provide:
   - value: The data with source in parentheses (e.g., "$22.5B (Bloomberg, July 2025)") - plain text only
 - paragraphs: 2-3 separate paragraphs analyzing the data. Each paragraph should:
   - Be a complete thought (3-5 sentences)
-  - Include inline citations like [1], [2] referencing your sources
+  - Include inline citations like [1], [2] referencing sources from your search results
   - Explain what the data means for the prediction market outcome
-- footnotes: List all sources cited in the paragraphs. Each footnote needs:
-  - number: The citation number (1, 2, 3, etc.)
-  - source: The source name (e.g., "Bloomberg", "Reuters", "Federal Reserve")
-  - detail: Date or article title (e.g., "January 2026", "Q4 Earnings Report")
 
 Example paragraph format:
 "The Federal Reserve held rates steady at 5.25-5.50% in their January meeting [1]. Chair Powell indicated that rate cuts remain unlikely until inflation shows sustained progress toward the 2% target [2]. This suggests the market's current pricing of 65% for a March cut may be overly optimistic."
 
 IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
-        result = await self._gemini_generate_structured(
+        result, grounding_sources = await self._gemini_generate_structured(
             prompt, QuestionResearch, use_search_grounding=True
         )
         
         if result:
-            # Format footnotes as list of dicts
-            footnotes = [
-                {"number": fn.number, "source": fn.source, "detail": fn.detail}
-                for fn in result.footnotes
-            ]
-            
-            # Format paragraphs with footnotes as HTML
+            # Format paragraphs with real grounding sources as HTML
             formatted_paragraph = self._format_paragraphs_with_footnotes(
-                result.paragraphs, footnotes
+                result.paragraphs, grounding_sources
             )
             
             return {
@@ -730,6 +758,7 @@ IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
         """Research key catalysts that could change the market.
         
         Uses Gemini's structured output feature to guarantee valid JSON.
+        Sources are extracted from Gemini's grounding metadata (not hallucinated).
         
         Args:
             event_title: Title of the event
@@ -751,28 +780,18 @@ Provide:
   - Paragraph 1: Bullish catalysts (could push YES higher) with specific events and dates [1], [2]
   - Paragraph 2: Bearish catalysts (could push NO higher) with specific events and dates [3], [4]
   - Paragraph 3: Timeline of key dates to watch before settlement
-  - Use inline citations like [1], [2] for sources
-- footnotes: List all sources cited. Each footnote needs:
-  - number: The citation number (1, 2, 3, etc.)
-  - source: The source name (e.g., "Bloomberg", "Company Investor Relations")
-  - detail: Date or event name (e.g., "January 2026", "Scheduled earnings call")
+  - Use inline citations like [1], [2] referencing sources from your search results
 
 IMPORTANT: Do NOT use markdown formatting (no ** or *). Use plain text only."""
 
-        result = await self._gemini_generate_structured(
+        result, grounding_sources = await self._gemini_generate_structured(
             prompt, CatalystResearch, use_search_grounding=True
         )
         
         if result:
-            # Format footnotes as list of dicts
-            footnotes = [
-                {"number": fn.number, "source": fn.source, "detail": fn.detail}
-                for fn in result.footnotes
-            ]
-            
-            # Format paragraphs with footnotes as HTML
+            # Format paragraphs with real grounding sources as HTML
             formatted_paragraph = self._format_paragraphs_with_footnotes(
-                result.paragraphs, footnotes
+                result.paragraphs, grounding_sources
             )
             
             return {
