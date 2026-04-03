@@ -1,4 +1,4 @@
-# Kalshi Deep Trading Bot
+# Kalshi Trading Bot CLI
 
 AI-powered Kalshi trading CLI that finds edge and executes trades.
 
