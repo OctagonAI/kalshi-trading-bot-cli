@@ -1,5 +1,5 @@
 import type { OctagonInvoker, OctagonVariant } from './types.js';
-import { callKalshiApi } from '../tools/kalshi/api.js';
+import { callKalshiApi, KalshiApiError } from '../tools/kalshi/api.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -18,7 +18,15 @@ const seriesSlugCache = new Map<string, string>(); // series_ticker → slug
  * Octagon needs this exact format — it cannot follow client-side redirects.
  */
 async function buildKalshiMarketUrl(ticker: string): Promise<string> {
-  const market = await callKalshiApi('GET', `/markets/${ticker}`);
+  let market: unknown;
+  try {
+    market = await callKalshiApi('GET', `/markets/${ticker}`);
+  } catch (err) {
+    if (err instanceof KalshiApiError && err.statusCode === 404) {
+      throw new Error(`Market ticker '${ticker}' not found on Kalshi. Use kalshi_search to find valid tickers.`);
+    }
+    throw err;
+  }
   const data = ((market as any).market ?? market) as Record<string, unknown>;
   const eventTicker = data.event_ticker as string | undefined;
   if (!eventTicker) throw new Error(`No event_ticker found for market ${ticker}`);

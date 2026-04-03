@@ -94,6 +94,8 @@ Fetch a full Octagon AI research report for a Kalshi market. Returns model proba
 - Use alongside kalshi_search for comprehensive analysis
 
 ## Input
+- IMPORTANT: NEVER guess or construct tickers yourself — only use exact tickers returned by kalshi_search results
+- kalshi_search already auto-fetches an Octagon report for the top result — check if the data you need is already in the kalshi_search response before calling this tool separately
 - PREFERRED: Pass a full Kalshi URL (e.g. https://kalshi.com/markets/kxcpiyoy/inflation/kxcpiyoy-26mar) — this is what Octagon expects
 - Also accepts a market ticker (e.g. KXBTC-26MAR-B80000) — will be resolved to a URL automatically
 - If you got market data from kalshi_search, construct the URL as: https://kalshi.com/markets/SERIES/EVENT/TICKER (all lowercase) using the series_ticker, event_ticker, and ticker fields
@@ -101,6 +103,7 @@ Fetch a full Octagon AI research report for a Kalshi market. Returns model proba
 ## When NOT to Use
 - For quick edge data already in the database (use edge_query)
 - For market prices or orderbook data only (use kalshi_search)
+- When kalshi_search already returned an octagon_report in its response — don't call again
 
 ## Notes
 - Returns cached reports when available (< 24h old)
