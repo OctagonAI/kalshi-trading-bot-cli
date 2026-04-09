@@ -33,13 +33,17 @@ export async function initTelemetry(): Promise<void> {
     await statsig.initializeAsync();
     client = statsig;
 
-    // Flush on process exit
-    const flush = () => {
-      try { client?.flush(); } catch {}
-    };
-    process.on('beforeExit', flush);
-    process.on('SIGINT', flush);
-    process.on('SIGTERM', flush);
+    // Intercept process.exit to flush telemetry before exiting.
+    // dispatch.ts calls process.exit() in many code paths, which would
+    // kill the process before events are sent.
+    const originalExit = process.exit;
+    process.exit = (async (code?: number) => {
+      await shutdownTelemetry();
+      originalExit(code as any);
+    }) as never;
+
+    process.on('SIGINT', () => { try { client?.flush(); } catch {} });
+    process.on('SIGTERM', () => { try { client?.flush(); } catch {} });
   } catch {
     disabled = true;
   }
