@@ -138,7 +138,7 @@ export class AgentToolExecutor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'tool_error', tool: toolName, error: errorMessage };
-      trackEvent('tool_execution', { tool: toolName, success: 'false' });
+      trackEvent('tool_execution', { tool: toolName, duration_ms: Date.now() - toolStartTime, success: 'false' });
 
       // Still record the call even on error (counts toward limit)
       ctx.scratchpad.recordToolCall(toolName, toolQuery);

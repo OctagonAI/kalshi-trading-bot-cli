@@ -134,13 +134,13 @@ export class AgentRunnerController {
       return undefined;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, interrupted: 'true' });
+        trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'false', interrupted: 'true' });
         this.markLastProcessing('interrupted');
         this.workingStateValue = { status: 'idle' };
         this.emitChange();
         return undefined;
       }
-      trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'false' });
+      trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'false', interrupted: 'false' });
       const message = error instanceof Error ? error.message : String(error);
       this.errorValue = message;
       this.markLastProcessing('error');

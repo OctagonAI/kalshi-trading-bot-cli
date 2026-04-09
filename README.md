@@ -254,7 +254,7 @@ Only command names, tool usage, timing, and success/failure metrics are tracked.
 
 Telemetry is enabled by default. To disable it, add to your `.env`:
 
-```
+```bash
 TELEMETRY_ENABLED=false
 ```
 
