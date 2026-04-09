@@ -1,6 +1,6 @@
 {
   "name": "kalshi-deep-trading-bot",
-  "version": "2.0.21",
+  "version": "2.0.22",
   "description": "Kalshi Deep Trading Bot - AI-powered prediction market terminal.",
   "type": "module",
   "main": "src/index.tsx",
