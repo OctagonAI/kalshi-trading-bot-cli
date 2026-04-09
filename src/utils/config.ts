@@ -21,6 +21,7 @@ interface Config {
   provider?: string;
   modelId?: string;  // Selected model ID (e.g., "gpt-5.4", "ollama:llama3.1")
   model?: string;    // Legacy key, kept for migration
+  anonymousId?: string;  // Persistent anonymous ID for telemetry
   memory?: {
     enabled?: boolean;
     embeddingProvider?: 'openai' | 'gemini' | 'ollama' | 'auto';

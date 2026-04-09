@@ -246,6 +246,24 @@ bun run typecheck    # Type checking
 bun test             # Run tests
 ```
 
+## Telemetry
+
+This app collects anonymous usage telemetry to help improve the product.
+**No personal data, API keys, trade details, or natural language inputs are ever collected.**
+Only command names, tool usage, timing, and success/failure metrics are tracked.
+
+Telemetry is enabled by default. To disable it, add to your `.env`:
+
+```bash
+TELEMETRY_ENABLED=false
+```
+
+Or set the environment variable before running:
+
+```bash
+TELEMETRY_ENABLED=false bun start
+```
+
 ## Documentation
 
 See the [User Guide](GUIDE.md) for detailed usage instructions, examples, and tips.

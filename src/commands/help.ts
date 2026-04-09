@@ -161,6 +161,7 @@ Analysis & Trading:
   /analyze <ticker> refresh      Force fresh Octagon report
   /buy <ticker> <n> [price] [yes|no]   Buy contracts (price in cents)
   /sell <ticker> <n> [price] [yes|no]  Sell contracts
+  /review                              Review positions for close signals
   /cancel <order_id>                   Cancel a resting order
 
 Account:

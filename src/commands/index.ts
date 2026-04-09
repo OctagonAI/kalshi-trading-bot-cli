@@ -11,8 +11,10 @@ import {
 import { handleThemes, formatThemesHuman } from './themes.js';
 import { handleAnalyze, formatAnalyzeHuman } from './analyze.js';
 import { handlePortfolio, formatPortfolioHuman } from './portfolio.js';
+import { reviewPortfolio, formatReviewHuman } from './review.js';
 import { buildHelp, validateTradeArgs } from './help.js';
 import { fetchMarketQuote } from './helpers.js';
+import { trackEvent } from '../utils/telemetry.js';
 
 export interface CommandResult {
   output: string;
@@ -33,6 +35,7 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
   const parts = trimmed.slice(1).trim().split(/\s+/);
   const command = parts[0]?.toLowerCase();
   const args = parts.slice(1);
+  trackEvent('slash_command', { command: command ?? '' });
 
   switch (command) {
     case 'help': {
@@ -73,6 +76,10 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
     case 'analyze':
       return handleAnalyzeCommand(args);
 
+    // ─── /review ─────────────────────────────────────────────────────
+    case 'review':
+      return handleReviewCommand();
+
     case 'config':
       // Fall through to agent — better handled by the LLM
       return null;
@@ -103,6 +110,7 @@ export async function executePendingTrade(trade: NonNullable<CommandResult['pend
 
   const data = await callKalshiApi('POST', '/portfolio/orders', { body });
   const order = data.order as Record<string, unknown> | undefined;
+  trackEvent('trade_executed', { action: trade.action, side: trade.side, success: 'true' });
   if (order) {
     return `Order placed. ID: ${order.order_id} | Status: ${order.status}`;
   }
@@ -211,6 +219,15 @@ function handleTradeCommand(action: 'buy' | 'sell', args: string[]): CommandResu
     output: formatOrderConfirmation(ticker.toUpperCase(), action, side, validated.count, validated.price),
     pendingTrade,
   };
+}
+
+async function handleReviewCommand(): Promise<CommandResult> {
+  try {
+    const reviews = await reviewPortfolio();
+    return { output: formatReviewHuman(reviews) };
+  } catch (err) {
+    return { output: `Review failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 async function handleCancel(orderId: string | undefined): Promise<CommandResult> {

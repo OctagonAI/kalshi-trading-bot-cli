@@ -12,6 +12,7 @@ import type {
   ToolStartEvent,
 } from './types.js';
 import type { RunContext } from './run-context.js';
+import { trackEvent } from '../utils/telemetry.js';
 
 type ToolExecutionEvent =
   | ToolStartEvent
@@ -63,6 +64,7 @@ export class AgentToolExecutor {
 
     if (this.requiresApproval(toolName) && !this.sessionApprovedTools.has(toolName)) {
       const decision = (await this.requestToolApproval?.({ tool: toolName, args: toolArgs })) ?? 'deny';
+      trackEvent('tool_approval', { tool: toolName, decision: String(decision) });
       yield { type: 'tool_approval', tool: toolName, args: toolArgs, approved: decision };
       if (decision === 'deny') {
         yield { type: 'tool_denied', tool: toolName, args: toolArgs };
@@ -126,6 +128,7 @@ export class AgentToolExecutor {
       const duration = Date.now() - toolStartTime;
 
       yield { type: 'tool_end', tool: toolName, args: toolArgs, result, duration };
+      trackEvent('tool_execution', { tool: toolName, duration_ms: duration, success: 'true' });
 
       // Record the tool call for limit tracking
       ctx.scratchpad.recordToolCall(toolName, toolQuery);
@@ -135,6 +138,7 @@ export class AgentToolExecutor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'tool_error', tool: toolName, error: errorMessage };
+      trackEvent('tool_execution', { tool: toolName, duration_ms: Date.now() - toolStartTime, success: 'false' });
 
       // Still record the call even on error (counts toward limit)
       ctx.scratchpad.recordToolCall(toolName, toolQuery);

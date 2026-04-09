@@ -23,6 +23,7 @@ import { ensureIndex, forceRefreshIndex } from '../tools/kalshi/search-index.js'
 import { searchEventIndex } from '../db/event-index.js';
 import type { KalshiBalanceResponse } from './formatters.js';
 import { ExitCode, exitCodeFromError } from '../utils/errors.js';
+import { trackEvent } from '../utils/telemetry.js';
 
 // ─── Alias resolution ────────────────────────────────────────────────────────
 // Maps legacy CLI subcommands to canonical commands with mode/subview context
@@ -54,6 +55,7 @@ function resolveAlias(subcommand: Subcommand, positionalArgs: string[]): Resolve
 export async function dispatch(args: ParsedArgs): Promise<void> {
   const { subcommand, json } = args;
   const resolved = resolveAlias(subcommand, args.positionalArgs);
+  trackEvent('cli_command', { command: resolved.canonical, subview: resolved.subview ?? '' });
 
   try {
     // ─── reject invalid flags early (for all commands) ───────────────
@@ -428,6 +430,7 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
           ? 'USER_ERROR'
           : 'INTERNAL_ERROR';
     const resp = wrapError(subcommand, errorCode, message);
+    trackEvent('error_occurred', { command: subcommand, error_code: errorCode });
 
     if (json) {
       console.log(JSON.stringify(resp));

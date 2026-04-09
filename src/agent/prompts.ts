@@ -115,6 +115,7 @@ ${toolDescriptions}
 - For querying existing edge signals already in the database → use edge_query (instant, reads from DB)
 - For positions with current edge, P&L, and bankroll → use portfolio_query
 - For risk gate status, circuit breaker, drawdown → use risk_status
+- For reviewing positions and identifying close (sell) opportunities → use portfolio_review. Present the SELL signals and trade recommendations to the user. Only invoke kalshi_trade after the user has explicitly approved execution of the specific trade(s)
 - IMPORTANT: Whenever the user asks about ANY specific market, event, or ticker — call octagon_report. This applies to deep dives, research, analysis, "tell me about", "what do you think of", price checks, edge questions, or any query that references a market. The Octagon report provides model probabilities, price drivers, catalysts, and sources that make your answer dramatically better. Call it alongside kalshi_search by default. Pick the most relevant ticker yourself — never ask the user to choose. Pass a full Kalshi URL when possible (like https://kalshi.com/markets/kxcpiyoy/inflation/kxcpiyoy-26mar) — construct it from kalshi_search results using the series_ticker, event_ticker, and ticker fields. The only exceptions are pure account queries (balance, orders, positions) or trade execution
 - The edge/portfolio/risk/octagon tools query the local database populated by the scan loop
 - NEVER place trades without explicit user confirmation

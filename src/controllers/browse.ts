@@ -11,6 +11,7 @@ import { ensureIndex, onIndexProgress, getRefreshPromise } from '../tools/kalshi
 import { getEventsFromIndex, getTopEventsByVolume, getIndexAge } from '../db/event-index.js';
 import { resolveMarket } from '../commands/analyze.js';
 import type { KalshiEvent, KalshiMarket } from '../tools/kalshi/types.js';
+import { trackEvent } from '../utils/telemetry.js';
 
 /** Maps lowercase theme IDs to exact Kalshi category labels (inlined to avoid heavy theme-resolver import) */
 const CATEGORY_MAP: Record<string, string> = {
@@ -276,6 +277,7 @@ export class BrowseController {
   }
 
   startBrowse(theme: string): void {
+    trackEvent('browse_action', { action: 'start', theme });
     this.loadToken++;
     this.directReportMode = false;
     this.themeValue = theme;
@@ -344,6 +346,7 @@ export class BrowseController {
   }
 
   selectMarket(eventTicker: string, marketTicker: string): void {
+    trackEvent('browse_action', { action: 'select_market' });
     for (const ev of this.eventsValue) {
       if (ev.eventTicker === eventTicker) {
         const market = ev.markets.find((m) => m.ticker === marketTicker);
@@ -359,6 +362,7 @@ export class BrowseController {
   }
 
   handleAction(action: string): void {
+    trackEvent('browse_action', { action });
     this.lastErrorValue = null;
     if (action === 'report' || action === 'refresh') {
       const forceRefresh = action === 'refresh';

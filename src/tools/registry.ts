@@ -13,6 +13,7 @@ import { portfolioQueryTool, PORTFOLIO_QUERY_DESCRIPTION } from './v2/portfolio-
 import { riskStatusTool, RISK_STATUS_DESCRIPTION } from './v2/risk-status.js';
 import { octagonReportTool, OCTAGON_REPORT_DESCRIPTION } from './v2/octagon-report.js';
 import { scanTool, SCAN_DESCRIPTION } from './v2/scan.js';
+import { portfolioReviewTool, PORTFOLIO_REVIEW_DESCRIPTION } from './v2/portfolio-review.js';
 
 /**
  * A registered tool with its rich description for system prompt injection.
@@ -115,6 +116,11 @@ export function getToolRegistry(model: string): RegisteredTool[] {
       name: 'scan_markets',
       tool: scanTool,
       description: SCAN_DESCRIPTION,
+    },
+    {
+      name: 'portfolio_review',
+      tool: portfolioReviewTool,
+      description: PORTFOLIO_REVIEW_DESCRIPTION,
     },
   ];
 

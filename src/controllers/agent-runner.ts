@@ -8,6 +8,7 @@ import type {
 } from '../agent/index.js';
 import type { DisplayEvent } from '../agent/types.js';
 import type { HistoryItem, HistoryItemStatus, WorkingState } from '../types.js';
+import { trackEvent } from '../utils/telemetry.js';
 
 type ChangeListener = () => void;
 
@@ -112,6 +113,7 @@ export class AgentRunnerController {
     this.emitChange();
 
     try {
+      trackEvent('agent_query_start', { model: this.agentConfig.model ?? '' });
       const agent = await Agent.create({
         ...this.agentConfig,
         signal: this.abortController.signal,
@@ -126,16 +128,19 @@ export class AgentRunnerController {
         await this.handleEvent(event);
       }
       if (finalAnswer) {
+        trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'true' });
         return { answer: finalAnswer };
       }
       return undefined;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
+        trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'false', interrupted: 'true' });
         this.markLastProcessing('interrupted');
         this.workingStateValue = { status: 'idle' };
         this.emitChange();
         return undefined;
       }
+      trackEvent('agent_query_complete', { model: this.agentConfig.model ?? '', duration_ms: Date.now() - startTime, success: 'false', interrupted: 'false' });
       const message = error instanceof Error ? error.message : String(error);
       this.errorValue = message;
       this.markLastProcessing('error');
