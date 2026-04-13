@@ -5,13 +5,13 @@ export interface HistorySnapshot {
   history_id: number;
   event_ticker: string;
   captured_at: string;
-  name: string;
-  series_category: string;
-  confidence_score: number;
+  name: string | null;
+  series_category: string | null;
+  confidence_score: number | null;
   model_probability: number;   // percentage 0-100
   market_probability: number;  // percentage 0-100
-  edge_pp: number;
-  close_time: string;
+  edge_pp: number | null;
+  close_time: string | null;
 }
 
 interface HistoryPage {

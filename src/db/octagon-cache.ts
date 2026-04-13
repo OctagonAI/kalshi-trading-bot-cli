@@ -20,23 +20,31 @@ export interface OctagonReport {
 }
 
 export function insertReport(db: Database, report: OctagonReport): void {
-  // Preserve has_history, mutually_exclusive, series_category from the existing row
-  // since INSERT OR REPLACE would reset them to defaults.
-  const existing = db.query(
-    'SELECT has_history, mutually_exclusive, series_category FROM octagon_reports WHERE report_id = $id',
-  ).get({ $id: report.report_id }) as { has_history: number; mutually_exclusive: number; series_category: string | null } | null;
-
   db.prepare(`
-    INSERT OR REPLACE INTO octagon_reports
+    INSERT INTO octagon_reports
       (report_id, ticker, event_ticker, model_prob, market_prob, mispricing_signal,
        drivers_json, catalysts_json, sources_json, resolution_history_json,
-       contract_snapshot_json, raw_response, model_accuracy, variant_used, fetched_at, expires_at,
-       has_history, mutually_exclusive, series_category)
+       contract_snapshot_json, raw_response, model_accuracy, variant_used, fetched_at, expires_at)
     VALUES
       ($report_id, $ticker, $event_ticker, $model_prob, $market_prob, $mispricing_signal,
        $drivers_json, $catalysts_json, $sources_json, $resolution_history_json,
-       $contract_snapshot_json, $raw_response, $model_accuracy, $variant_used, $fetched_at, $expires_at,
-       $has_history, $mutually_exclusive, $series_category)
+       $contract_snapshot_json, $raw_response, $model_accuracy, $variant_used, $fetched_at, $expires_at)
+    ON CONFLICT(report_id) DO UPDATE SET
+      ticker = EXCLUDED.ticker,
+      event_ticker = EXCLUDED.event_ticker,
+      model_prob = EXCLUDED.model_prob,
+      market_prob = EXCLUDED.market_prob,
+      mispricing_signal = EXCLUDED.mispricing_signal,
+      drivers_json = EXCLUDED.drivers_json,
+      catalysts_json = EXCLUDED.catalysts_json,
+      sources_json = EXCLUDED.sources_json,
+      resolution_history_json = EXCLUDED.resolution_history_json,
+      contract_snapshot_json = EXCLUDED.contract_snapshot_json,
+      raw_response = EXCLUDED.raw_response,
+      model_accuracy = EXCLUDED.model_accuracy,
+      variant_used = EXCLUDED.variant_used,
+      fetched_at = EXCLUDED.fetched_at,
+      expires_at = EXCLUDED.expires_at
   `).run({
     $report_id: report.report_id,
     $ticker: report.ticker,
@@ -54,9 +62,6 @@ export function insertReport(db: Database, report: OctagonReport): void {
     $variant_used: report.variant_used ?? null,
     $fetched_at: report.fetched_at,
     $expires_at: report.expires_at,
-    $has_history: existing?.has_history ?? 0,
-    $mutually_exclusive: existing?.mutually_exclusive ?? 0,
-    $series_category: existing?.series_category ?? null,
   });
 }
 

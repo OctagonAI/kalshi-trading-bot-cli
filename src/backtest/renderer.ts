@@ -105,7 +105,6 @@ function formatTimeUntil(isoDate: string): string {
   if (diff <= 0) return 'closed';
   const days = diff / (1000 * 60 * 60 * 24);
   if (days >= 365) return `${(days / 365).toFixed(1)} yrs`;
-  if (days >= 30) return `${Math.round(days)} days`;
   if (days >= 1) return `${Math.round(days)} days`;
   const hours = diff / (1000 * 60 * 60);
   return `${Math.round(hours)}h`;

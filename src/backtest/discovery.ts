@@ -1,7 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { callKalshiApi } from '../tools/kalshi/api.js';
 import type { KalshiMarket } from '../tools/kalshi/types.js';
-import { logger } from '../utils/logger.js';
 
 const CONCURRENCY = 10;
 
@@ -74,8 +73,6 @@ export async function discoverSettledMarkets(
   }
 
   const events = db.query(query).all(params) as Array<{ event_ticker: string; category: string | null }>;
-  logger.info(`[backtest] Found ${events.length} events with Octagon history`);
-
   // Normalize date-only strings: fromDate → start of day, toDate → end of day
   const isDateOnly = /^\d{4}-\d{2}-\d{2}$/;
   const fromDate = opts?.from ? new Date(opts.from) : null;
@@ -84,12 +81,6 @@ export async function discoverSettledMarkets(
       ? new Date(opts.to + 'T23:59:59.999Z')
       : new Date(opts.to))
     : null;
-
-  // Look up which events are mutually_exclusive (multi-outcome bracket events)
-  const meRows = db.query(
-    "SELECT event_ticker, mutually_exclusive FROM octagon_reports WHERE variant_used = 'events-api'",
-  ).all() as Array<{ event_ticker: string; mutually_exclusive: number }>;
-  const meSet = new Set(meRows.filter(r => r.mutually_exclusive === 1).map(r => r.event_ticker));
 
   const batchResults = await parallelMap(events, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
@@ -121,9 +112,7 @@ export async function discoverSettledMarkets(
     return settled;
   }, CONCURRENCY);
 
-  const settled = batchResults.flat();
-  logger.info(`[backtest] Found ${settled.length} settled markets across ${events.length} events`);
-  return settled;
+  return batchResults.flat();
 }
 
 /**
@@ -133,7 +122,7 @@ export async function discoverOpenMarkets(
   db: Database,
   opts?: { category?: string },
 ): Promise<OpenMarket[]> {
-  let query2 = `SELECT DISTINCT event_ticker, series_category as category, mutually_exclusive as me
+  let query2 = `SELECT DISTINCT event_ticker, series_category as category
     FROM octagon_reports r WHERE variant_used = 'events-api'`;
   const params2: Record<string, string> = {};
   if (opts?.category) {
@@ -141,9 +130,7 @@ export async function discoverOpenMarkets(
     params2.$cat = `%${opts.category.toLowerCase()}%`;
   }
 
-  const events2 = db.query(query2).all(params2) as Array<{ event_ticker: string; category: string | null; me: number }>;
-  const meSet2 = new Set(events2.filter(r => r.me === 1).map(r => r.event_ticker));
-  logger.info(`[backtest] Checking ${events2.length} events for open markets...`);
+  const events2 = db.query(query2).all(params2) as Array<{ event_ticker: string; category: string | null }>;
 
   const batchResults = await parallelMap(events2, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
@@ -172,7 +159,5 @@ export async function discoverOpenMarkets(
     return open;
   }, CONCURRENCY);
 
-  const open = batchResults.flat();
-  logger.info(`[backtest] Found ${open.length} open markets with price data`);
-  return open;
+  return batchResults.flat();
 }

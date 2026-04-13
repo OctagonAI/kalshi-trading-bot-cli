@@ -68,7 +68,7 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
               market_prob: snap.market_probability / 100,
               edge_pp: (snap.model_probability - snap.market_probability),
               hours_before_close: hoursBefore,
-              confidence_score: snap.confidence_score,
+              confidence_score: snap.confidence_score ?? 0,
               series_category: m.series_category,
               outcome: m.result === 'yes' ? 1 : 0,
               close_time: m.close_time,

@@ -9,6 +9,17 @@ import {
   formatOrderConfirmation,
 } from './formatters.js';
 import { handleThemes, formatThemesHuman } from './themes.js';
+import type { ParsedArgs, Subcommand } from './parse-args.js';
+
+function defaultArgs(overrides: Partial<ParsedArgs>): ParsedArgs {
+  return {
+    subcommand: 'chat', positionalArgs: [], json: false,
+    live: false, refresh: false, report: false, dryRun: false,
+    verbose: false, performance: false, resolved: false,
+    unresolved: false, snapshotLast: false, parseErrors: [],
+    ...overrides,
+  };
+}
 import { handleAnalyze, formatAnalyzeHuman } from './analyze.js';
 import { handlePortfolio, formatPortfolioHuman } from './portfolio.js';
 import { reviewPortfolio, formatReviewHuman } from './review.js';
@@ -68,7 +79,7 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
     // ─── /search themes (inline) ─────────────────────────────────────
     // Note: /search <non-themes> is handled in cli.ts via browseController
     case 'themes': {
-      const resp = await handleThemes({ subcommand: 'themes', positionalArgs: [], json: false, live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false, resolved: false, unresolved: false, snapshotLast: false, parseErrors: [] });
+      const resp = await handleThemes(defaultArgs({ subcommand: 'themes' }));
       return { output: formatThemesHuman(resp.data) };
     }
 
@@ -150,11 +161,7 @@ async function handlePortfolioSlash(subview?: string): Promise<CommandResult> {
     }
 
     // Default: full portfolio overview
-    const resp = await handlePortfolio({
-      subcommand: 'portfolio', positionalArgs: [], json: false,
-      live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false,
-      resolved: false, unresolved: false, snapshotLast: false, parseErrors: [],
-    });
+    const resp = await handlePortfolio(defaultArgs({ subcommand: 'portfolio' }));
     return { output: formatPortfolioHuman(resp.data) };
   } catch (err) {
     return { output: `Portfolio error: ${err instanceof Error ? err.message : String(err)}` };

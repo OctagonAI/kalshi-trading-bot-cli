@@ -22,8 +22,12 @@ export function bootstrapCI(
   alpha = 0.05,
 ): [number, number] {
   if (data.length === 0) return [0, 0];
-  if (iterations <= 0) throw new Error(`bootstrapCI: iterations must be > 0, got ${iterations}`);
-  if (alpha <= 0 || alpha >= 1) throw new Error(`bootstrapCI: alpha must be in (0, 1), got ${alpha}`);
+  if (!Number.isFinite(iterations) || !Number.isInteger(iterations) || iterations <= 0) {
+    throw new Error(`bootstrapCI: iterations must be a finite integer > 0, got ${iterations}`);
+  }
+  if (!Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    throw new Error(`bootstrapCI: alpha must be a finite number in (0, 1), got ${alpha}`);
+  }
 
   const stats: number[] = [];
   for (let i = 0; i < iterations; i++) {

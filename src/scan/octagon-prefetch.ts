@@ -108,9 +108,11 @@ function persistEvent(db: Database, event: OctagonEventEntry): boolean {
       confidence: classifyConfidence(Math.abs(edge)),
     });
   } catch (err) {
-    // UNIQUE constraint violation if edge already exists for this ticker+timestamp — OK
+    // Only swallow UNIQUE constraint violations (duplicate ticker+timestamp)
     const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.includes('UNIQUE') && !msg.includes('constraint')) {
+    if (/UNIQUE constraint failed/i.test(msg)) {
+      // Expected — edge already exists for this ticker+timestamp
+    } else {
       throw err;
     }
   }
