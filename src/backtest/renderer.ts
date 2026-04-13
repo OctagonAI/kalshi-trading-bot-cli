@@ -1,10 +1,10 @@
-import type { BacktestResult, UnresolvedEdge } from './types.js';
+import type { BacktestResult, UnresolvedEdge, ResolvedMarket } from './types.js';
 import { writeFileSync } from 'fs';
 
 /**
  * Format the resolved scorecard for terminal display.
  */
-function formatResolved(r: NonNullable<BacktestResult['resolved']>): string {
+function formatResolved(r: NonNullable<BacktestResult['resolved']>, snapshotLabel: string): string {
   const lines: string[] = [];
   lines.push('RESOLVED — Model Scorecard');
   lines.push('──────────────────────────');
@@ -12,6 +12,7 @@ function formatResolved(r: NonNullable<BacktestResult['resolved']>): string {
   lines.push('');
   lines.push(`  Markets        ${r.markets_evaluated}  (${r.events_evaluated} events)`);
   lines.push(`  Coverage       ${(r.coverage * 100).toFixed(0)}%  of settled Kalshi markets`);
+  lines.push(`  Snapshot       ${snapshotLabel}`);
   lines.push('');
   lines.push(`  Brier (Octagon)   ${r.brier_octagon.toFixed(3)}`);
   lines.push(`  Brier (Market)    ${r.brier_market.toFixed(3)}`);
@@ -21,6 +22,24 @@ function formatResolved(r: NonNullable<BacktestResult['resolved']>): string {
   if (r.edge_signals > 0) {
     lines.push(`  Hit rate          ${(r.edge_hit_rate * 100).toFixed(1)}%   [95% CI: ${(r.hit_rate_ci[0] * 100).toFixed(1)}% to ${(r.hit_rate_ci[1] * 100).toFixed(1)}%]`);
     lines.push(`  Flat-bet P&L      ${r.flat_bet_pnl >= 0 ? '+' : ''}$${r.flat_bet_pnl.toFixed(2)} (ROI: ${r.flat_bet_roi >= 0 ? '+' : ''}${(r.flat_bet_roi * 100).toFixed(1)}%)`);
+  }
+
+  // Category breakdown
+  const byCat = new Map<string, ResolvedMarket[]>();
+  for (const m of r.markets) {
+    const cat = m.series_category || 'other';
+    const arr = byCat.get(cat) ?? [];
+    arr.push(m);
+    byCat.set(cat, arr);
+  }
+  if (byCat.size > 1) {
+    lines.push('');
+    lines.push('  By category:');
+    const sorted = [...byCat.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [cat, markets] of sorted) {
+      const events = new Set(markets.map(m => m.event_ticker)).size;
+      lines.push(`    ${cat.padEnd(20)} ${String(markets.length).padStart(4)} markets  (${events} events)`);
+    }
   }
 
   return lines.join('\n');
@@ -92,23 +111,30 @@ function formatTimeUntil(isoDate: string): string {
   return `${Math.round(hours)}h`;
 }
 
+export interface FormatOpts {
+  minEdge?: number;          // 0-1 scale, default 0.05
+  minHoursBeforeClose?: number;
+  snapshotLast?: boolean;
+}
+
 /**
  * Format complete backtest result for terminal display.
  */
-export function formatBacktestHuman(result: BacktestResult): string {
+export function formatBacktestHuman(result: BacktestResult, opts?: FormatOpts): string {
+  const minEdge = opts?.minEdge ?? 0.05;
+  const snapshotLabel = opts?.snapshotLast ? 'last (no lead time)' : `last-${opts?.minHoursBeforeClose ?? 24}h`;
   const lines: string[] = [];
   lines.push(`Octagon Backtest — ${result.date_range.from} – ${result.date_range.to}`);
   lines.push('═══════════════════════════════════════');
   lines.push('');
 
   if (result.resolved) {
-    lines.push(formatResolved(result.resolved));
+    lines.push(formatResolved(result.resolved, snapshotLabel));
     lines.push('');
   }
 
   if (result.unresolved) {
-    // Use default 5pp min edge for display
-    lines.push(formatUnresolved(result.unresolved, 0.05));
+    lines.push(formatUnresolved(result.unresolved, minEdge));
   }
 
   if (!result.resolved && !result.unresolved) {

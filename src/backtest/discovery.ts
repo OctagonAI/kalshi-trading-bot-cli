@@ -62,14 +62,12 @@ export async function discoverSettledMarkets(
   db: Database,
   opts?: { category?: string; from?: string; to?: string },
 ): Promise<SettledMarket[]> {
-  let query = `SELECT DISTINCT event_ticker,
-    (SELECT json_extract(drivers_json, '$[0].category') FROM octagon_reports r2
-     WHERE r2.event_ticker = r.event_ticker AND r2.variant_used = 'events-api' LIMIT 1) as category
+  let query = `SELECT DISTINCT event_ticker, series_category as category
     FROM octagon_reports r WHERE variant_used = 'events-api' AND has_history = 1`;
   const params: Record<string, string> = {};
   if (opts?.category) {
-    query += ' AND category LIKE $cat';
-    params.$cat = `%${opts.category}%`;
+    query += ' AND LOWER(series_category) LIKE $cat';
+    params.$cat = `%${opts.category.toLowerCase()}%`;
   }
 
   const events = db.query(query).all(params) as Array<{ event_ticker: string; category: string | null }>;
@@ -78,8 +76,18 @@ export async function discoverSettledMarkets(
   const fromDate = opts?.from ? new Date(opts.from) : null;
   const toDate = opts?.to ? new Date(opts.to) : null;
 
+  // Look up which events are mutually_exclusive (multi-outcome bracket events)
+  const meRows = db.query(
+    "SELECT event_ticker, mutually_exclusive FROM octagon_reports WHERE variant_used = 'events-api'",
+  ).all() as Array<{ event_ticker: string; mutually_exclusive: number }>;
+  const meSet = new Set(meRows.filter(r => r.mutually_exclusive === 1).map(r => r.event_ticker));
+
   const batchResults = await parallelMap(events, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
+    // Skip multi-market events: event-level model_prob doesn't apply to individual brackets.
+    // This catches both mutually_exclusive (elections, sports) and bracket events (BTC daily).
+    if (markets.length > 1) return [];
+
     const settled: SettledMarket[] = [];
 
     for (const m of markets) {
@@ -116,21 +124,25 @@ export async function discoverOpenMarkets(
   db: Database,
   opts?: { category?: string },
 ): Promise<OpenMarket[]> {
-  let query = `SELECT DISTINCT event_ticker,
-    (SELECT json_extract(drivers_json, '$[0].category') FROM octagon_reports r2
-     WHERE r2.event_ticker = r.event_ticker AND r2.variant_used = 'events-api' LIMIT 1) as category
+  let query2 = `SELECT DISTINCT event_ticker, series_category as category, mutually_exclusive as me
     FROM octagon_reports r WHERE variant_used = 'events-api'`;
-  const params: Record<string, string> = {};
+  const params2: Record<string, string> = {};
   if (opts?.category) {
-    query += ' AND category LIKE $cat';
-    params.$cat = `%${opts.category}%`;
+    query2 += ' AND LOWER(series_category) LIKE $cat';
+    params2.$cat = `%${opts.category.toLowerCase()}%`;
   }
 
-  const events = db.query(query).all(params) as Array<{ event_ticker: string; category: string | null }>;
-  logger.info(`[backtest] Checking ${events.length} events for open markets...`);
+  const events2 = db.query(query2).all(params2) as Array<{ event_ticker: string; category: string | null; me: number }>;
+  const meSet2 = new Set(events2.filter(r => r.me === 1).map(r => r.event_ticker));
+  logger.info(`[backtest] Checking ${events2.length} events for open markets...`);
 
-  const batchResults = await parallelMap(events, async ({ event_ticker, category: cat }) => {
+  const batchResults = await parallelMap(events2, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
+
+    // Skip multi-market events: event-level model_prob doesn't apply to individual brackets.
+    // This catches both mutually_exclusive (elections, sports) and bracket events (BTC daily).
+    if (markets.length > 1) return [];
+
     const open: OpenMarket[] = [];
 
     for (const m of markets) {

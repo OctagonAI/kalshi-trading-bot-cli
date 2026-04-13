@@ -203,4 +203,10 @@ export function migrate(db: Database): void {
   if (!reportCols.some((c) => c.name === 'has_history')) {
     db.exec(`ALTER TABLE octagon_reports ADD COLUMN has_history INTEGER DEFAULT 0`);
   }
+  if (!reportCols.some((c) => c.name === 'mutually_exclusive')) {
+    db.exec(`ALTER TABLE octagon_reports ADD COLUMN mutually_exclusive INTEGER DEFAULT 0`);
+  }
+  if (!reportCols.some((c) => c.name === 'series_category')) {
+    db.exec(`ALTER TABLE octagon_reports ADD COLUMN series_category TEXT`);
+  }
 }

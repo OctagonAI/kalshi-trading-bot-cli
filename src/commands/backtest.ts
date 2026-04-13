@@ -6,15 +6,16 @@ import { discoverSettledMarkets, discoverOpenMarkets } from '../backtest/discove
 import { fetchAndCacheHistory, selectSnapshot } from '../backtest/fetcher.js';
 import { computeResolvedMetrics } from '../backtest/metrics.js';
 import type { BacktestResult, ResolvedMarket, UnresolvedEdge } from '../backtest/types.js';
-import { formatBacktestHuman, exportCSV } from '../backtest/renderer.js';
+import { formatBacktestHuman, exportCSV, type FormatOpts } from '../backtest/renderer.js';
 import { logger } from '../utils/logger.js';
 
 export { formatBacktestHuman };
+export type { FormatOpts };
 
 export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<BacktestResult>> {
   const db = getDb();
   const minEdge = args.minEdge ?? 0.05;
-  const minHours = args.minHoursBeforeClose ?? 24;
+  const minHours = args.snapshotLast ? 0 : (args.minHoursBeforeClose ?? 24);
   const now = new Date();
 
   const dateRange = {
