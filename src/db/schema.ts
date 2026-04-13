@@ -209,4 +209,7 @@ export function migrate(db: Database): void {
   if (!reportCols.some((c) => c.name === 'series_category')) {
     db.exec(`ALTER TABLE octagon_reports ADD COLUMN series_category TEXT`);
   }
+  if (!reportCols.some((c) => c.name === 'confidence_score')) {
+    db.exec(`ALTER TABLE octagon_reports ADD COLUMN confidence_score REAL`);
+  }
 }

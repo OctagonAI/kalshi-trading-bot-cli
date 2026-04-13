@@ -97,8 +97,8 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
     for (const m of openMarkets) {
       // Get latest Octagon model_prob from local cache
       const report = db.query(
-        "SELECT model_prob, market_prob FROM octagon_reports WHERE event_ticker = $et AND variant_used = 'events-api' ORDER BY fetched_at DESC LIMIT 1",
-      ).get({ $et: m.event_ticker }) as { model_prob: number; market_prob: number | null } | null;
+        "SELECT model_prob, market_prob, confidence_score FROM octagon_reports WHERE event_ticker = $et AND variant_used = 'events-api' ORDER BY fetched_at DESC LIMIT 1",
+      ).get({ $et: m.event_ticker }) as { model_prob: number; market_prob: number | null; confidence_score: number | null } | null;
 
       if (!report) continue;
 
@@ -114,7 +114,7 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
         market_prob: m.market_prob,
         edge_pp: edgePp,
         direction: edgePp > 0 ? 'YES' : 'NO',
-        confidence_score: 0, // events API confidence_score not persisted in octagon_reports
+        confidence_score: report.confidence_score ?? 0,
         closes_at: m.close_time,
         series_category: m.series_category,
       });
