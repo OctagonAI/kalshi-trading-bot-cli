@@ -68,7 +68,7 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
     // ─── /search themes (inline) ─────────────────────────────────────
     // Note: /search <non-themes> is handled in cli.ts via browseController
     case 'themes': {
-      const resp = await handleThemes({ subcommand: 'themes', positionalArgs: [], json: false, live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false, parseErrors: [] });
+      const resp = await handleThemes({ subcommand: 'themes', positionalArgs: [], json: false, live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false, resolved: false, unresolved: false, snapshotLast: false, parseErrors: [] });
       return { output: formatThemesHuman(resp.data) };
     }
 
@@ -152,7 +152,8 @@ async function handlePortfolioSlash(subview?: string): Promise<CommandResult> {
     // Default: full portfolio overview
     const resp = await handlePortfolio({
       subcommand: 'portfolio', positionalArgs: [], json: false,
-      live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false, parseErrors: [],
+      live: false, refresh: false, report: false, dryRun: false, verbose: false, performance: false,
+      resolved: false, unresolved: false, snapshotLast: false, parseErrors: [],
     });
     return { output: formatPortfolioHuman(resp.data) };
   } catch (err) {
