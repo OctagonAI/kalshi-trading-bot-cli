@@ -1,10 +1,22 @@
 import type { Database } from 'bun:sqlite';
-import type { OctagonEventEntry } from '../scan/octagon-events-api.js';
-import { logger } from '../utils/logger.js';
+
+/** Narrow snapshot type representing what we actually store and use from history. */
+export interface HistorySnapshot {
+  history_id: number;
+  event_ticker: string;
+  captured_at: string;
+  name: string;
+  series_category: string;
+  confidence_score: number;
+  model_probability: number;   // percentage 0-100
+  market_probability: number;  // percentage 0-100
+  edge_pp: number;
+  close_time: string;
+}
 
 interface HistoryPage {
   event_ticker: string;
-  data: OctagonEventEntry[];
+  data: HistorySnapshot[];
   next_cursor: string | null;
   has_more: boolean;
 }
@@ -20,11 +32,11 @@ const TIMEOUT_MS = 60_000;
 export async function fetchEventHistory(
   eventTicker: string,
   opts?: { capturedFrom?: string; capturedTo?: string },
-): Promise<OctagonEventEntry[]> {
+): Promise<HistorySnapshot[]> {
   const apiKey = process.env.OCTAGON_API_KEY;
   if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
 
-  const all: OctagonEventEntry[] = [];
+  const all: HistorySnapshot[] = [];
   let cursor: string | null = null;
 
   do {
@@ -61,89 +73,63 @@ export async function fetchEventHistory(
 
 /**
  * Fetch event history and cache it in the local octagon_history table.
- * Returns cached data if already present and not expired.
+ * Only uses the cache for full-history requests (no time window).
+ * When capturedFrom/capturedTo are provided, always fetches fresh from the API.
  */
 export async function fetchAndCacheHistory(
   db: Database,
   eventTicker: string,
   opts?: { capturedFrom?: string; capturedTo?: string },
-): Promise<OctagonEventEntry[]> {
-  // Check if we already have cached history for this event
-  const cached = db.query(
-    'SELECT COUNT(*) as cnt FROM octagon_history WHERE event_ticker = $et',
-  ).get({ $et: eventTicker }) as { cnt: number };
+): Promise<HistorySnapshot[]> {
+  const hasWindow = !!(opts?.capturedFrom || opts?.capturedTo);
 
-  if (cached.cnt > 0) {
-    // Return from cache
-    const rows = db.query(
-      `SELECT * FROM octagon_history WHERE event_ticker = $et ORDER BY captured_at ASC`,
-    ).all({ $et: eventTicker }) as Array<{
-      history_id: number;
-      event_ticker: string;
-      captured_at: string;
-      model_probability: number;
-      market_probability: number;
-      edge_pp: number;
-      confidence_score: number;
-      series_category: string;
-      close_time: string;
-      name: string;
-    }>;
-    // Convert DB rows back to OctagonEventEntry shape (minimal fields needed)
-    return rows.map(r => ({
-      history_id: r.history_id,
-      run_id: '',
-      captured_at: r.captured_at,
-      event_ticker: r.event_ticker,
-      name: r.name ?? '',
-      slug: '',
-      series_category: r.series_category ?? '',
-      available_on_brokers: true,
-      mutually_exclusive: false,
-      analysis_last_updated: r.captured_at,
-      confidence_score: r.confidence_score,
-      model_probability: r.model_probability,
-      market_probability: r.market_probability,
-      edge_pp: r.edge_pp ?? 0,
-      expected_return: 0,
-      r_score: 0,
-      total_volume: 0,
-      total_open_interest: 0,
-      close_time: r.close_time ?? '',
-      key_takeaway: '',
-    }));
+  // Only use cache for full-history requests (no time window filter)
+  if (!hasWindow) {
+    const cached = db.query(
+      'SELECT COUNT(*) as cnt FROM octagon_history WHERE event_ticker = $et',
+    ).get({ $et: eventTicker }) as { cnt: number };
+
+    if (cached.cnt > 0) {
+      const rows = db.query(
+        `SELECT history_id, event_ticker, captured_at, name, series_category,
+                confidence_score, model_probability, market_probability, edge_pp, close_time
+         FROM octagon_history WHERE event_ticker = $et ORDER BY captured_at ASC`,
+      ).all({ $et: eventTicker }) as HistorySnapshot[];
+      return rows;
+    }
   }
 
   // Fetch from API
   const snapshots = await fetchEventHistory(eventTicker, opts);
 
-  // Cache in DB
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO octagon_history
-      (history_id, event_ticker, captured_at, model_probability, market_probability,
-       edge_pp, confidence_score, series_category, close_time, name)
-    VALUES ($history_id, $event_ticker, $captured_at, $model_probability, $market_probability,
-            $edge_pp, $confidence_score, $series_category, $close_time, $name)
-  `);
+  // Cache in DB (only for full-history requests to avoid partial cache)
+  if (!hasWindow) {
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO octagon_history
+        (history_id, event_ticker, captured_at, model_probability, market_probability,
+         edge_pp, confidence_score, series_category, close_time, name)
+      VALUES ($history_id, $event_ticker, $captured_at, $model_probability, $market_probability,
+              $edge_pp, $confidence_score, $series_category, $close_time, $name)
+    `);
 
-  db.transaction(() => {
-    for (const s of snapshots) {
-      insert.run({
-        $history_id: s.history_id,
-        $event_ticker: s.event_ticker,
-        $captured_at: s.captured_at,
-        $model_probability: s.model_probability,
-        $market_probability: s.market_probability,
-        $edge_pp: s.edge_pp,
-        $confidence_score: s.confidence_score,
-        $series_category: s.series_category ?? '',
-        $close_time: s.close_time ?? '',
-        $name: s.name ?? '',
-      });
-    }
-  })();
+    db.transaction(() => {
+      for (const s of snapshots) {
+        insert.run({
+          $history_id: s.history_id,
+          $event_ticker: s.event_ticker,
+          $captured_at: s.captured_at,
+          $model_probability: s.model_probability,
+          $market_probability: s.market_probability,
+          $edge_pp: s.edge_pp,
+          $confidence_score: s.confidence_score,
+          $series_category: s.series_category ?? '',
+          $close_time: s.close_time ?? '',
+          $name: s.name ?? '',
+        });
+      }
+    })();
+  }
 
-  logger.info(`[backtest] Cached ${snapshots.length} history snapshots for ${eventTicker}`);
   return snapshots;
 }
 
@@ -153,15 +139,14 @@ export async function fetchAndCacheHistory(
  * Probabilities in the returned snapshot are percentages (0-100).
  */
 export function selectSnapshot(
-  snapshots: OctagonEventEntry[],
+  snapshots: HistorySnapshot[],
   closeTime: string,
   minHoursBeforeClose: number,
-): OctagonEventEntry | null {
+): HistorySnapshot | null {
   const closeEpoch = new Date(closeTime).getTime();
   const cutoff = closeEpoch - minHoursBeforeClose * 3600 * 1000;
 
-  // Find the last snapshot before the cutoff
-  let best: OctagonEventEntry | null = null;
+  let best: HistorySnapshot | null = null;
   for (const s of snapshots) {
     const capturedEpoch = new Date(s.captured_at).getTime();
     if (capturedEpoch <= cutoff) {

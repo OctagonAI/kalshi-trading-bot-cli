@@ -22,6 +22,8 @@ export function bootstrapCI(
   alpha = 0.05,
 ): [number, number] {
   if (data.length === 0) return [0, 0];
+  if (iterations <= 0) throw new Error(`bootstrapCI: iterations must be > 0, got ${iterations}`);
+  if (alpha <= 0 || alpha >= 1) throw new Error(`bootstrapCI: alpha must be in (0, 1), got ${alpha}`);
 
   const stats: number[] = [];
   for (let i = 0; i < iterations; i++) {
@@ -33,8 +35,9 @@ export function bootstrapCI(
   }
   stats.sort((a, b) => a - b);
 
-  const lo = Math.floor((alpha / 2) * stats.length);
-  const hi = Math.floor((1 - alpha / 2) * stats.length);
+  if (stats.length === 0) return [0, 0];
+  const lo = Math.min(Math.max(0, Math.floor((alpha / 2) * stats.length)), stats.length - 1);
+  const hi = Math.min(Math.max(0, Math.floor((1 - alpha / 2) * stats.length)), stats.length - 1);
   return [stats[lo], stats[hi]];
 }
 
@@ -69,25 +72,29 @@ export function computeResolvedMetrics(markets: ResolvedMarket[], minEdgePp = 5)
   const brierOctagon = brierOctagonScores.reduce((a, b) => a + b, 0) / n;
   const brierMarket = brierMarketScores.reduce((a, b) => a + b, 0) / n;
 
-  // Skill score with bootstrap CI
+  // Skill score with bootstrap CI — resample both octagon and market brier scores
   const skillScore = computeSkillScore(brierOctagon, brierMarket);
-
-  // Bootstrap skill: resample paired (octagon_brier, market_brier), compute skill on each
-  const pairedDiffs = markets.map((_, i) => brierMarketScores[i] - brierOctagonScores[i]);
-  const skillCI = bootstrapCI(pairedDiffs, (sample) => {
-    const avgDiff = sample.reduce((a, b) => a + b, 0) / sample.length;
-    const avgMarket = brierMarket; // approximate
-    return avgMarket === 0 ? 0 : avgDiff / avgMarket;
+  const indices = markets.map((_, i) => i);
+  const skillCI = bootstrapCI(indices, (sample) => {
+    let sumOctagon = 0;
+    let sumMarket = 0;
+    for (const idx of sample) {
+      sumOctagon += brierOctagonScores[idx];
+      sumMarket += brierMarketScores[idx];
+    }
+    const avgOctagon = sumOctagon / sample.length;
+    const avgMarket = sumMarket / sample.length;
+    return avgMarket === 0 ? 0 : 1 - (avgOctagon / avgMarket);
   });
 
-  // Edge signals: where |edge| >= minEdgePp
-  const edgeSignals = markets.filter(m => Math.abs(m.edge_pp) >= minEdgePp);
+  // Edge signals: where |edge| >= minEdgePp AND edge is non-zero
+  const edgeSignals = markets.filter(m => m.edge_pp !== 0 && Math.abs(m.edge_pp) >= minEdgePp);
   const edgeCount = edgeSignals.length;
 
   // Hit rate: edge direction was correct
   const hits = edgeSignals.filter(m => {
-    if (m.edge_pp > 0) return m.outcome === 1; // model said YES more likely, YES happened
-    return m.outcome === 0; // model said NO more likely, NO happened
+    if (m.edge_pp > 0) return m.outcome === 1;
+    return m.outcome === 0;
   });
   const hitRate = edgeCount > 0 ? hits.length / edgeCount : 0;
 
@@ -101,6 +108,7 @@ export function computeResolvedMetrics(markets: ResolvedMarket[], minEdgePp = 5)
   });
 
   // Flat-bet P&L: $1 per edge signal
+  const stakePerEdge = 1;
   let pnl = 0;
   for (const m of edgeSignals) {
     const p = m.market_prob;
@@ -112,7 +120,8 @@ export function computeResolvedMetrics(markets: ResolvedMarket[], minEdgePp = 5)
       pnl += m.outcome === 0 ? p : -(1 - p);
     }
   }
-  const roi = edgeCount > 0 ? pnl / edgeCount : 0;
+  const totalDeployed = edgeCount * stakePerEdge;
+  const roi = totalDeployed > 0 ? pnl / totalDeployed : 0;
 
   // Unique events
   const uniqueEvents = new Set(markets.map(m => m.event_ticker));
