@@ -25,6 +25,12 @@ export interface OctagonEventEntry {
   close_time: string;
   key_takeaway: string;
   has_history?: boolean;
+  outcome_probabilities?: Array<{
+    market_ticker: string;
+    outcome_name?: string;
+    model_probability: number;
+    market_probability: number;
+  }> | null;
   current_state_summary_richtext?: string;
   short_answer_richtext?: string;
   executive_summary_richtext?: string;

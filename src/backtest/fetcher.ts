@@ -1,6 +1,13 @@
 import type { Database } from 'bun:sqlite';
 
 /** Narrow snapshot type representing what we actually store and use from history. */
+export interface OutcomeProbability {
+  market_ticker: string;
+  outcome_name?: string;
+  model_probability: number;   // percentage 0-100
+  market_probability: number;  // percentage 0-100
+}
+
 export interface HistorySnapshot {
   history_id: number;
   event_ticker: string;
@@ -12,6 +19,8 @@ export interface HistorySnapshot {
   market_probability: number;  // percentage 0-100
   edge_pp: number | null;
   close_time: string | null;
+  outcome_probabilities?: OutcomeProbability[] | null;
+  outcome_probabilities_json?: string | null; // raw JSON from DB cache
 }
 
 interface HistoryPage {
@@ -92,9 +101,16 @@ export async function fetchAndCacheHistory(
     if (cached.cnt > 0) {
       const rows = db.query(
         `SELECT history_id, event_ticker, captured_at, name, series_category,
-                confidence_score, model_probability, market_probability, edge_pp, close_time
+                confidence_score, model_probability, market_probability, edge_pp, close_time,
+                outcome_probabilities_json
          FROM octagon_history WHERE event_ticker = $et ORDER BY captured_at ASC`,
       ).all({ $et: eventTicker }) as HistorySnapshot[];
+      // Parse outcome_probabilities from cached JSON
+      for (const r of rows) {
+        if (r.outcome_probabilities_json) {
+          try { r.outcome_probabilities = JSON.parse(r.outcome_probabilities_json); } catch { /* skip */ }
+        }
+      }
       return rows;
     }
   }
@@ -107,9 +123,9 @@ export async function fetchAndCacheHistory(
     const insert = db.prepare(`
       INSERT OR IGNORE INTO octagon_history
         (history_id, event_ticker, captured_at, model_probability, market_probability,
-         edge_pp, confidence_score, series_category, close_time, name)
+         edge_pp, confidence_score, series_category, close_time, name, outcome_probabilities_json)
       VALUES ($history_id, $event_ticker, $captured_at, $model_probability, $market_probability,
-              $edge_pp, $confidence_score, $series_category, $close_time, $name)
+              $edge_pp, $confidence_score, $series_category, $close_time, $name, $opj)
     `);
 
     db.transaction(() => {
@@ -125,6 +141,7 @@ export async function fetchAndCacheHistory(
           $series_category: s.series_category ?? null,
           $close_time: s.close_time ?? null,
           $name: s.name ?? null,
+          $opj: s.outcome_probabilities ? JSON.stringify(s.outcome_probabilities) : null,
         });
       }
     })();

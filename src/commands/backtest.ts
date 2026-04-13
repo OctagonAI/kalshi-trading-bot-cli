@@ -3,10 +3,26 @@ import type { CLIResponse } from './json.js';
 import { wrapSuccess, wrapError } from './json.js';
 import { getDb } from '../db/index.js';
 import { discoverSettledMarkets, discoverOpenMarkets } from '../backtest/discovery.js';
-import { fetchAndCacheHistory, selectSnapshot } from '../backtest/fetcher.js';
+import { fetchAndCacheHistory, selectSnapshot, type OutcomeProbability } from '../backtest/fetcher.js';
 import { computeResolvedMetrics } from '../backtest/metrics.js';
 import type { BacktestResult, ResolvedMarket, UnresolvedEdge } from '../backtest/types.js';
 import { formatBacktestHuman, exportCSV, type FormatOpts } from '../backtest/renderer.js';
+
+/** Look up per-market model/market probability from outcome_probabilities array. */
+function findOutcomeProb(
+  outcomes: OutcomeProbability[] | null | undefined,
+  marketTicker: string,
+): { modelProb: number; marketProb: number } | null {
+  if (!outcomes || !Array.isArray(outcomes)) return null;
+  const match = outcomes.find(
+    o => o.market_ticker.toUpperCase() === marketTicker.toUpperCase(),
+  );
+  if (!match) return null;
+  return {
+    modelProb: match.model_probability / 100,
+    marketProb: match.market_probability / 100,
+  };
+}
 
 export { formatBacktestHuman };
 export type { FormatOpts };
@@ -56,6 +72,11 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
             const snap = selectSnapshot(snapshots, m.close_time, minHours);
             if (!snap) continue;
 
+            // Use per-market probability from outcome_probabilities if available
+            const perMarket = findOutcomeProb(snap.outcome_probabilities, m.ticker);
+            const modelProb = perMarket?.modelProb ?? snap.model_probability / 100;
+            const marketProb = perMarket?.marketProb ?? snap.market_probability / 100;
+
             const closeEpoch = new Date(m.close_time).getTime();
             const snapEpoch = new Date(snap.captured_at).getTime();
             const hoursBefore = (closeEpoch - snapEpoch) / (3600 * 1000);
@@ -63,9 +84,9 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
             resolvedMarkets.push({
               ticker: m.ticker,
               event_ticker: m.event_ticker,
-              model_prob: snap.model_probability / 100,
-              market_prob: snap.market_probability / 100,
-              edge_pp: Math.round((snap.model_probability - snap.market_probability) * 10) / 10,
+              model_prob: modelProb,
+              market_prob: marketProb,
+              edge_pp: Math.round((modelProb - marketProb) * 1000) / 10,
               hours_before_close: hoursBefore,
               confidence_score: snap.confidence_score ?? 0,
               series_category: m.series_category,
@@ -95,14 +116,20 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
 
     const edges: UnresolvedEdge[] = [];
     for (const m of openMarkets) {
-      // Get latest Octagon model_prob from local cache
+      // Get latest Octagon report from local cache
       const report = db.query(
-        "SELECT model_prob, market_prob, confidence_score FROM octagon_reports WHERE event_ticker = $et AND variant_used = 'events-api' ORDER BY fetched_at DESC LIMIT 1",
-      ).get({ $et: m.event_ticker }) as { model_prob: number; market_prob: number | null; confidence_score: number | null } | null;
+        "SELECT model_prob, market_prob, confidence_score, outcome_probabilities_json FROM octagon_reports WHERE event_ticker = $et AND variant_used = 'events-api' ORDER BY fetched_at DESC LIMIT 1",
+      ).get({ $et: m.event_ticker }) as { model_prob: number; market_prob: number | null; confidence_score: number | null; outcome_probabilities_json: string | null } | null;
 
       if (!report) continue;
 
-      const modelProb = report.model_prob;
+      // Use per-market probability from outcome_probabilities if available
+      let outcomes: OutcomeProbability[] | null = null;
+      if (report.outcome_probabilities_json) {
+        try { outcomes = JSON.parse(report.outcome_probabilities_json); } catch { /* skip */ }
+      }
+      const perMarket = findOutcomeProb(outcomes, m.ticker);
+      const modelProb = perMarket?.modelProb ?? report.model_prob;
       const edgePp = Math.round((modelProb - m.market_prob) * 1000) / 10;
 
       if (Math.abs(edgePp) < minEdge * 100) continue;

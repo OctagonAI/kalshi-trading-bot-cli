@@ -93,12 +93,8 @@ export async function discoverSettledMarkets(
       : new Date(opts.to))
     : null;
 
-  const batchResults = await parallelMap(events, async ({ event_ticker, category: cat, me }) => {
-    // Skip mutually_exclusive events even if only one market is visible
-    if (me) return [];
+  const batchResults = await parallelMap(events, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
-    if (markets.length > 1) return [];
-
     const settled: SettledMarket[] = [];
 
     for (const m of markets) {
@@ -136,11 +132,8 @@ export async function discoverOpenMarkets(
   const { query: q2, params: p2 } = buildEventQuery('', opts?.category);
   const events2 = db.query(q2).all(p2) as Array<{ event_ticker: string; category: string | null; me: number }>;
 
-  const batchResults = await parallelMap(events2, async ({ event_ticker, category: cat, me }) => {
-    if (me) return [];
+  const batchResults = await parallelMap(events2, async ({ event_ticker, category: cat }) => {
     const markets = await fetchEventMarkets(event_ticker);
-    if (markets.length > 1) return [];
-
     const open: OpenMarket[] = [];
 
     for (const m of markets) {
