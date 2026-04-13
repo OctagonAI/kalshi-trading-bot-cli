@@ -23,7 +23,9 @@ export interface OpenMarket {
 
 /** Parse market price from Kalshi response (handles both cents and dollars formats). */
 function parsePrice(m: KalshiMarket): number {
-  return parseFloat(m.last_price_dollars ?? '') || (typeof m.last_price === 'number' ? m.last_price / 100 : 0);
+  const dollars = parseFloat(m.last_price_dollars ?? '');
+  if (Number.isFinite(dollars)) return dollars;
+  return typeof m.last_price === 'number' ? m.last_price / 100 : 0;
 }
 
 /** Fetch event markets from Kalshi, returning empty array on error. */
@@ -40,6 +42,22 @@ async function fetchEventMarkets(eventTicker: string): Promise<KalshiMarket[]> {
   } catch {
     return [];
   }
+}
+
+/** Build the event discovery query with optional category filter and extra WHERE clauses. */
+function buildEventQuery(
+  extraWhere: string,
+  category?: string,
+): { query: string; params: Record<string, string> } {
+  let query = `SELECT event_ticker, MAX(series_category) as category, MAX(mutually_exclusive) as me
+    FROM octagon_reports r WHERE variant_used = 'events-api'${extraWhere}`;
+  const params: Record<string, string> = {};
+  if (category) {
+    query += ' AND LOWER(series_category) LIKE $cat';
+    params.$cat = `%${category.toLowerCase()}%`;
+  }
+  query += ' GROUP BY event_ticker';
+  return { query, params };
 }
 
 /** Process items in parallel batches of `concurrency`. */
@@ -64,15 +82,7 @@ export async function discoverSettledMarkets(
   db: Database,
   opts?: { category?: string; from?: string; to?: string },
 ): Promise<SettledMarket[]> {
-  let query = `SELECT event_ticker, MAX(series_category) as category, MAX(mutually_exclusive) as me
-    FROM octagon_reports r WHERE variant_used = 'events-api' AND has_history = 1`;
-  const params: Record<string, string> = {};
-  if (opts?.category) {
-    query += ' AND LOWER(series_category) LIKE $cat';
-    params.$cat = `%${opts.category.toLowerCase()}%`;
-  }
-  query += ' GROUP BY event_ticker';
-
+  const { query, params } = buildEventQuery(' AND has_history = 1', opts?.category);
   const events = db.query(query).all(params) as Array<{ event_ticker: string; category: string | null; me: number }>;
   // Normalize date-only strings: fromDate → start of day, toDate → end of day
   const isDateOnly = /^\d{4}-\d{2}-\d{2}$/;
@@ -123,16 +133,8 @@ export async function discoverOpenMarkets(
   db: Database,
   opts?: { category?: string },
 ): Promise<OpenMarket[]> {
-  let query2 = `SELECT event_ticker, MAX(series_category) as category, MAX(mutually_exclusive) as me
-    FROM octagon_reports r WHERE variant_used = 'events-api'`;
-  const params2: Record<string, string> = {};
-  if (opts?.category) {
-    query2 += ' AND LOWER(series_category) LIKE $cat';
-    params2.$cat = `%${opts.category.toLowerCase()}%`;
-  }
-  query2 += ' GROUP BY event_ticker';
-
-  const events2 = db.query(query2).all(params2) as Array<{ event_ticker: string; category: string | null; me: number }>;
+  const { query: q2, params: p2 } = buildEventQuery('', opts?.category);
+  const events2 = db.query(q2).all(p2) as Array<{ event_ticker: string; category: string | null; me: number }>;
 
   const batchResults = await parallelMap(events2, async ({ event_ticker, category: cat, me }) => {
     if (me) return [];
