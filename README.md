@@ -102,7 +102,8 @@ Type help for commands, or just ask a question.
 | `--days <n>` | Lookback period in days (backtest, default 30) |
 | `--resolved` | Resolved markets only (backtest) |
 | `--unresolved` | Open markets only (backtest) |
-| `--category <cat>` | Filter by category (backtest) |
+| `--category <cat>` | Filter by category (backtest, search edge) |
+| `--limit <n>` | Max results to show (search edge, default 20) |
 | `--export <path>` | Export per-market CSV (backtest) |
 
 ### Backtesting
