@@ -1,11 +1,11 @@
 {
-  "name": "kalshi-deep-trading-bot",
+  "name": "kalshi-trading-bot-cli",
   "version": "2.0.23",
-  "description": "Kalshi Deep Trading Bot - AI-powered prediction market terminal.",
+  "description": "Kalshi Trading Bot CLI - AI-powered prediction market terminal.",
   "type": "module",
   "main": "src/index.tsx",
   "bin": {
-    "kalshi-deep-trading-bot": "./src/index.tsx"
+    "kalshi-trading-bot-cli": "./src/index.tsx"
   },
   "scripts": {
     "start": "bun run src/index.tsx",

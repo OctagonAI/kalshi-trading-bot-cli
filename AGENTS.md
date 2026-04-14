@@ -18,7 +18,7 @@
   - Skills: `src/skills/` (SKILL.md-based extensible workflows, e.g. DCF valuation)
   - Utils: `src/utils/` (env, config, caching, token estimation, markdown tables)
   - Evals: `src/evals/` (LangSmith evaluation runner with Ink UI)
-- Config: `.kalshi-deep-trading-bot/settings.json` (persisted model/provider selection)
+- Config: `.kalshi-trading-bot-cli/settings.json` (persisted model/provider selection)
 - Environment: `.env` (API keys; see `env.example`)
 - Scripts: `scripts/release.sh`
 
@@ -100,5 +100,5 @@
 ## Security
 
 - API keys stored in `.env` (gitignored). Users can also enter keys interactively via the CLI.
-- Config stored in `.kalshi-deep-trading-bot/settings.json` (gitignored).
+- Config stored in `.kalshi-trading-bot-cli/settings.json` (gitignored).
 - Never commit or expose real API keys, tokens, or credentials.

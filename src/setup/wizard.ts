@@ -104,7 +104,7 @@ export class SetupWizardController {
   getTitle(): string {
     switch (this.wizardState) {
       case 'welcome':
-        return 'Welcome to Kalshi Deep Trading Bot';
+        return 'Welcome to Kalshi Trading Bot CLI';
       case 'kalshi_api_key':
         return 'Step 1/5: Kalshi API Key';
       case 'kalshi_private_key':

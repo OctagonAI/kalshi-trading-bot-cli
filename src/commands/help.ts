@@ -120,7 +120,7 @@ ${p}help <command>             Show detailed help for a command`,
 function buildOverview(ctx: HelpContext): string {
   const p = prefix(ctx);
   if (ctx === 'cli') {
-    return `**Kalshi Deep Trading Bot — CLI Commands**
+    return `**Kalshi Trading Bot CLI — CLI Commands**
 
 Quick start:
   kalshi search crypto          Find markets by keyword or theme
@@ -164,7 +164,7 @@ Backtest flags: --resolved, --unresolved, --category, --from, --to, --min-edge, 
 Run "kalshi help <command>" for detailed usage.`;
   }
 
-  return `**Kalshi Deep Trading Bot — Commands**
+  return `**Kalshi Trading Bot CLI — Commands**
 
 Quick start:
   /search crypto          Find markets by keyword or theme

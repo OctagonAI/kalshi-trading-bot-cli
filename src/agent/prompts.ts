@@ -38,7 +38,7 @@ export interface GroupContext {
 // Default System Prompt (for backward compatibility)
 // ============================================================================
 
-export const DEFAULT_SYSTEM_PROMPT = `You are Kalshi Deep Trading Bot, a prediction market research and trading assistant.
+export const DEFAULT_SYSTEM_PROMPT = `You are Kalshi Trading Bot CLI, a prediction market research and trading assistant.
 
 Current date: ${getCurrentDate()}
 
@@ -95,7 +95,7 @@ export function buildSystemPrompt(model: string, channel?: string): string {
     ? `\n## Tables (for comparative/tabular data)\n\n${profile.tables}`
     : '';
 
-  return `You are Kalshi Deep Trading Bot, an AI-powered prediction market research and trading assistant.
+  return `You are Kalshi Trading Bot CLI, an AI-powered prediction market research and trading assistant.
 
 Current date: ${getCurrentDate()}
 

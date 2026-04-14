@@ -1,4 +1,4 @@
-# Kalshi Deep Trading Bot — User Guide
+# Kalshi Trading Bot CLI — User Guide
 
 AI-powered prediction market terminal for [Kalshi](https://kalshi.com). Ask natural language questions, research markets, and trade — all from your terminal.
 

@@ -6,13 +6,13 @@ Runs deep fundamental research on every market — independent probability estim
 
 Integrates with the [Octagon Research API](https://app.octagonai.co) for AI-generated probability estimates that power the edge detection engine.
 
-![Kalshi Deep Trading Bot](assets/screenshot.png)
+![Kalshi Trading Bot CLI](assets/screenshot.png)
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/OctagonAI/kalshi-deep-trading-bot-cli.git
-cd kalshi-deep-trading-bot-cli
+git clone https://github.com/OctagonAI/kalshi-trading-bot-cli.git
+cd kalshi-trading-bot-cli
 bun install
 bun start
 ```
@@ -26,7 +26,7 @@ The setup wizard runs automatically on first launch — it walks you through API
 ```
 $ bun start
 
-Welcome to Kalshi Deep Trading Bot
+Welcome to Kalshi Trading Bot CLI
 Type help for commands, or just ask a question.
 
 > search crypto
