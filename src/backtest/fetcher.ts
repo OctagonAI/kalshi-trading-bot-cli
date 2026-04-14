@@ -87,9 +87,20 @@ export async function fetchEventHistory(
       throw new Error(`Octagon history API ${resp.status} for ${eventTicker}: ${body.slice(0, 200)}`);
     }
 
-    const page = (await resp.json()) as HistoryPage;
-    all.push(...page.data);
-    cursor = page.has_more ? page.next_cursor : null;
+    const raw = (await resp.json()) as unknown;
+    if (!raw || typeof raw !== 'object') {
+      throw new Error(`Octagon history API returned invalid response for ${eventTicker}`);
+    }
+    const page = raw as Record<string, unknown>;
+    if (!Array.isArray(page.data)) {
+      throw new Error(`Octagon history API response missing data array for ${eventTicker}`);
+    }
+    const hasMore = typeof page.has_more === 'boolean' ? page.has_more : false;
+    if (hasMore && !page.next_cursor) {
+      throw new Error(`Octagon history API has_more=true but next_cursor missing for ${eventTicker}`);
+    }
+    all.push(...(page.data as HistorySnapshot[]));
+    cursor = hasMore ? (page.next_cursor as string) : null;
   } while (cursor);
 
   return all;

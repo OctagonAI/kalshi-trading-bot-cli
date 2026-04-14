@@ -32,8 +32,6 @@ export interface ParsedArgs {
   resolved: boolean;
   unresolved: boolean;
   days?: number;
-  from?: string;
-  to?: string;
   category?: string;
   exportPath?: string;
   parseErrors: string[];
@@ -59,8 +57,6 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let resolved = false;
   let unresolved = false;
   let days: number | undefined;
-  let from: string | undefined;
-  let to: string | undefined;
   let category: string | undefined;
   let exportPath: string | undefined;
 
@@ -149,12 +145,6 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       resolved = true;
     } else if (arg === '--unresolved') {
       unresolved = true;
-    } else if (arg === '--from') {
-      const val = argv[++i];
-      if (val != null) { from = val; } else { parseErrors.push('--from requires a value'); }
-    } else if (arg === '--to') {
-      const val = argv[++i];
-      if (val != null) { to = val; } else { parseErrors.push('--to requires a value'); }
     } else if (arg === '--category') {
       const val = argv[++i];
       if (val != null) { category = val; } else { parseErrors.push('--category requires a value'); }
@@ -190,5 +180,5 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     positionalArgs.unshift(first);
   }
 
-  return { subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side, live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, from, to, category, exportPath, parseErrors };
+  return { subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side, live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, category, exportPath, parseErrors };
 }

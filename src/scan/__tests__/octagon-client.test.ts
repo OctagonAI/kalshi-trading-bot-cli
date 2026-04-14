@@ -195,6 +195,25 @@ describe('OctagonClient', () => {
       expect(report.marketProb).toBeCloseTo(0.37, 4);
     });
 
+    test('handles outcome_probabilities_json as array (not string) with case-insensitive ticker match', () => {
+      const client = new OctagonClient(makeInvoker(''), db, audit);
+      const json = JSON.stringify({
+        versions: [{
+          model_probability: 1.6,
+          market_probability: 1.3,
+          outcome_probabilities_json: [
+            { market_ticker: 'KXPRESNOMR-28-TMAS', model_probability: 1.6, market_probability: 1.3 },
+            { market_ticker: 'KXPRESNOMR-28-JDV', model_probability: 37.69, market_probability: 37.0 },
+          ],
+        }],
+      });
+
+      // Mixed-case ticker should still match
+      const report = client.parseReport(json, 'kxpresnomr-28-jdv', 'KXPRESNOMR-28', 'cache');
+      expect(report.modelProb).toBeCloseTo(0.3769, 4);
+      expect(report.marketProb).toBeCloseTo(0.37, 4);
+    });
+
     test('falls back to event-level probability when ticker not in outcome_probabilities_json', () => {
       const client = new OctagonClient(makeInvoker(''), db, audit);
       const json = JSON.stringify({
