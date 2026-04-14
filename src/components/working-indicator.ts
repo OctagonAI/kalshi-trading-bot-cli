@@ -61,6 +61,8 @@ export class WorkingIndicatorComponent extends Container {
       (text) => theme.primary(text),
       '',
     );
+    // Use larger braille block characters for a more visible spinner (ora's "dots2" style)
+    (this.loader as any).frames = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
     this.addChild(this.loader);
   }
 
