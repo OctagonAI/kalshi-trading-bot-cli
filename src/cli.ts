@@ -454,7 +454,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
           for (let i = 0; i < edgeArgs.length; i++) {
             if (edgeArgs[i] === '--min-edge') { const v = Number(edgeArgs[++i]?.replace('%', '')); if (Number.isFinite(v)) minEdgePp = v; }
             else if (edgeArgs[i] === '--limit') { const v = Number(edgeArgs[++i]); if (Number.isFinite(v) && v > 0) edgeLimit = v; }
-            else if (edgeArgs[i] === '--category') { edgeCategory = edgeArgs[++i]; }
+            else if (edgeArgs[i] === '--category' || edgeArgs[i] === '--theme') { edgeCategory = edgeArgs[++i]; }
           }
           const { scanEdges, formatEdgeScanHuman } = await import('./commands/search-edge.js');
           const { getDb } = await import('./db/index.js');
