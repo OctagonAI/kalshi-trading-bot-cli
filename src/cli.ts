@@ -412,6 +412,36 @@ export async function runCli(options?: { forceSetup?: boolean }) {
 
     if (query.startsWith('/search')) {
       const themeArg = query.slice('/search'.length).trim() || 'top50';
+      // /search edge → edge scanner (inline, no browse flow)
+      if (themeArg.startsWith('edge')) {
+        chatLog.addQuery(query);
+        chatLog.resetToolGrouping();
+        try {
+          workingIndicator.setState({ status: 'thinking' });
+          tui.requestRender();
+          // Parse edge-specific flags from the rest of the args
+          const edgeArgs = themeArg.slice('edge'.length).trim().split(/\s+/).filter(Boolean);
+          let minEdgePp = 5;
+          let edgeLimit = 20;
+          let edgeCategory: string | undefined;
+          for (let i = 0; i < edgeArgs.length; i++) {
+            if (edgeArgs[i] === '--min-edge') { const v = Number(edgeArgs[++i]?.replace('%', '')); if (Number.isFinite(v)) minEdgePp = v; }
+            else if (edgeArgs[i] === '--limit') { const v = Number(edgeArgs[++i]); if (Number.isFinite(v) && v > 0) edgeLimit = v; }
+            else if (edgeArgs[i] === '--category') { edgeCategory = edgeArgs[++i]; }
+          }
+          const { scanEdges, formatEdgeScanHuman } = await import('./commands/search-edge.js');
+          const { getDb } = await import('./db/index.js');
+          const result = scanEdges(getDb(), { minEdgePp, limit: edgeLimit, category: edgeCategory });
+          workingIndicator.setState({ status: 'idle' });
+          chatLog.finalizeAnswer(formatResponse(formatEdgeScanHuman(result, minEdgePp)));
+          tui.requestRender();
+        } catch (err) {
+          workingIndicator.setState({ status: 'idle' });
+          chatLog.finalizeAnswer(`Error: ${err instanceof Error ? err.message : String(err)}`);
+          tui.requestRender();
+        }
+        return;
+      }
       // /search themes → inline themes list (no browse flow)
       if (themeArg === 'themes') {
         // Handled as slash command in handleSlashCommand via 'themes' case

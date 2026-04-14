@@ -33,6 +33,7 @@ export interface ParsedArgs {
   unresolved: boolean;
   days?: number;
   category?: string;
+  limit?: number;
   exportPath?: string;
   parseErrors: string[];
 }
@@ -58,6 +59,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let unresolved = false;
   let days: number | undefined;
   let category: string | undefined;
+  let limit: number | undefined;
   let exportPath: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
@@ -155,6 +157,13 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         if (Number.isFinite(numeric) && numeric > 0) { days = numeric; }
         else { parseErrors.push(`Invalid --days value: "${raw}" (expected a positive number)`); }
       } else { parseErrors.push('--days requires a value'); }
+    } else if (arg === '--limit') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { limit = numeric; }
+        else { parseErrors.push(`Invalid --limit value: "${raw}" (expected a positive number)`); }
+      } else { parseErrors.push('--limit requires a value'); }
     } else if (arg === '--export') {
       const val = argv[++i];
       if (val != null) { exportPath = val; } else { parseErrors.push('--export requires a value'); }
@@ -180,5 +189,5 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     positionalArgs.unshift(first);
   }
 
-  return { subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side, live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, category, exportPath, parseErrors };
+  return { subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side, live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, category, limit, exportPath, parseErrors };
 }

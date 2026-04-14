@@ -73,6 +73,7 @@ Type help for commands, or just ask a question.
 | Command | Description |
 |---------|-------------|
 | `search [theme\|ticker\|query]` | Find markets by keyword or theme |
+| `search edge [--min-edge N]` | Scan all markets by model edge |
 | `analyze <ticker>` | Deep analysis: edge, drivers, Kelly sizing |
 | `watch <ticker>` | Live price and orderbook feed |
 | `watch --theme <theme>` | Continuous theme scan |

@@ -22,6 +22,7 @@ import { buildHelp, validateTradeArgs } from './help.js';
 import { fetchMarketQuote } from './helpers.js';
 import { ensureIndex, forceRefreshIndex } from '../tools/kalshi/search-index.js';
 import { searchEventIndex } from '../db/event-index.js';
+import { scanEdges, formatEdgeScanHuman } from './search-edge.js';
 import type { KalshiBalanceResponse } from './formatters.js';
 import { ExitCode, exitCodeFromError } from '../utils/errors.js';
 import { trackEvent } from '../utils/telemetry.js';
@@ -83,6 +84,18 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
           console.log(formatThemesHuman(resp.data));
         }
         process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+        return;
+      }
+      if (sub === 'edge') {
+        const db = (await import('../db/index.js')).getDb();
+        const minEdgePp = (args.minEdge ?? 0.05) * 100;
+        const result = scanEdges(db, { minEdgePp, limit: args.limit, category: args.category });
+        if (json) {
+          console.log(JSON.stringify(wrapSuccess('search', result)));
+        } else {
+          console.log(formatEdgeScanHuman(result, minEdgePp));
+        }
+        process.exit(ExitCode.SUCCESS);
         return;
       }
       if (!sub) {

@@ -14,11 +14,16 @@ function buildTopics(ctx: HelpContext): Record<string, string> {
 
 ${p}search [theme|ticker|query]  Search events by theme, ticker, or free-text
 ${p}search themes                List all available themes and subcategories
+${p}search edge                  Scan all markets by Octagon model edge
+${p}search edge --min-edge 30    Markets with ≥30pp edge
+${p}search edge --limit 50       Top 50 results
+${p}search edge --category crypto Filter by category
 
 Examples:
   ${p}search crypto
   ${p}search crypto:btc
-  ${p}search "bitcoin price"`,
+  ${p}search "bitcoin price"
+  ${p}search edge --min-edge 30 --category crypto`,
 
     portfolio: `**${p}portfolio** — Account state
 
