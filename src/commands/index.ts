@@ -38,6 +38,8 @@ export interface CommandResult {
     count: number;
     price: number | undefined;
   };
+  /** If set, run this async function after showing `output` and append the result */
+  asyncFollowUp?: () => Promise<string>;
 }
 
 export async function handleSlashCommand(input: string): Promise<CommandResult | null> {
@@ -107,13 +109,21 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
         else if (a === '--min-hours-before-close') { const v = Number(args[++i]); if (Number.isFinite(v)) btArgs.minHoursBeforeClose = v; }
         else if (a === '--snapshot' && args[i + 1] === 'last') { btArgs.snapshotLast = true; i++; }
       }
-      const resp = await handleBacktest(defaultArgs(btArgs));
-      if (!resp.ok || !resp.data) return { output: resp.error?.message ?? 'Backtest failed' };
-      return { output: formatBacktestHuman(resp.data, {
-        minEdge: btArgs.minEdge ?? 0.05,
-        minHoursBeforeClose: btArgs.minHoursBeforeClose ?? 24,
-        snapshotLast: btArgs.snapshotLast,
-      }) };
+      const mode = btArgs.resolved ? 'resolved markets' : btArgs.unresolved ? 'open markets' : 'resolved + open markets';
+      // Return a progress message immediately, then run the backtest
+      // The caller (cli.ts) will show this while the spinner is active
+      return {
+        output: `Running backtest on ${mode}...`,
+        asyncFollowUp: async () => {
+          const resp = await handleBacktest(defaultArgs(btArgs));
+          if (!resp.ok || !resp.data) return resp.error?.message ?? 'Backtest failed';
+          return formatBacktestHuman(resp.data, {
+            minEdge: btArgs.minEdge ?? 0.05,
+            minHoursBeforeClose: btArgs.minHoursBeforeClose ?? 24,
+            snapshotLast: btArgs.snapshotLast,
+          });
+        },
+      };
     }
 
     case 'config':

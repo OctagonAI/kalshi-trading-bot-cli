@@ -472,10 +472,22 @@ export async function runCli(options?: { forceSetup?: boolean }) {
         workingIndicator.setState({ status: 'thinking' });
         tui.requestRender();
         const cmdResult = await handleSlashCommand(query);
-        workingIndicator.setState({ status: 'idle' });
         if (cmdResult !== null) {
           const formatted = formatResponse(cmdResult.output);
           chatLog.finalizeAnswer(formatted);
+          tui.requestRender();
+
+          // If the command has an async follow-up (e.g., backtest), run it with the spinner still active
+          if (cmdResult.asyncFollowUp) {
+            try {
+              const followUp = await cmdResult.asyncFollowUp();
+              chatLog.finalizeAnswer(formatResponse(followUp));
+            } catch (err) {
+              chatLog.finalizeAnswer(`Error: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+
+          workingIndicator.setState({ status: 'idle' });
           if (cmdResult.pendingTrade) {
             pendingTrade = cmdResult.pendingTrade;
             chatLog.finalizeAnswer(
@@ -487,6 +499,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
           tui.requestRender();
           return;
         }
+        workingIndicator.setState({ status: 'idle' });
       } catch (err) {
         workingIndicator.setState({ status: 'idle' });
         chatLog.finalizeAnswer(`Error: ${err instanceof Error ? err.message : String(err)}`);
