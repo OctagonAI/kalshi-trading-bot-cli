@@ -29,13 +29,19 @@ export function scanEdges(
   const limit = opts?.limit ?? 20;
   const category = opts?.category;
 
-  let query = `SELECT event_ticker, series_category, confidence_score, outcome_probabilities_json
+  let inner = `SELECT event_ticker, MAX(fetched_at) as max_fetched
     FROM octagon_reports WHERE variant_used = 'events-api' AND outcome_probabilities_json IS NOT NULL`;
   const params: Record<string, string> = {};
   if (category) {
-    query += ' AND LOWER(series_category) LIKE $cat';
+    inner += ' AND LOWER(series_category) LIKE $cat';
     params.$cat = `%${category.toLowerCase()}%`;
   }
+  inner += ' GROUP BY event_ticker';
+
+  const query = `SELECT r.event_ticker, r.series_category, r.confidence_score, r.outcome_probabilities_json
+    FROM octagon_reports r
+    INNER JOIN (${inner}) latest ON r.event_ticker = latest.event_ticker AND r.fetched_at = latest.max_fetched
+    WHERE r.variant_used = 'events-api' AND r.outcome_probabilities_json IS NOT NULL`;
 
   const rows = db.query(query).all(params) as Array<{
     event_ticker: string;

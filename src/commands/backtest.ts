@@ -104,7 +104,7 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
   }
 
   // ─── UNRESOLVED: open markets with current Kalshi prices ───────────────
-  if (!args.resolved && !subscriptionNotice) {
+  if (!args.resolved) {
     const openMarkets = await discoverOpenMarkets(db, { category: args.category });
 
     for (const m of openMarkets) {

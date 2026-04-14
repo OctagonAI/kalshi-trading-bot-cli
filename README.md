@@ -122,7 +122,7 @@ bun start backtest --category crypto            # filter by category
 bun start backtest --export results.csv         # per-market detail
 ```
 
-```
+```text
 Octagon Backtest — 30-day lookback (03/15 – 04/14)
 ══════════════════════════════════════════════════════════
 
