@@ -118,7 +118,7 @@ export async function fetchAndCacheHistory(
   eventTicker: string,
   opts?: { capturedFrom?: string; capturedTo?: string; days?: number },
 ): Promise<HistorySnapshot[]> {
-  const hasWindow = !!(opts?.capturedFrom || opts?.capturedTo || opts?.days);
+  const hasWindow = !!(opts?.capturedFrom || opts?.capturedTo);
 
   // Only use cache for full-history requests (no time window filter)
   if (!hasWindow) {

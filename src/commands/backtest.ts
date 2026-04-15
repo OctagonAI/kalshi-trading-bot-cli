@@ -52,7 +52,7 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
         for (const [eventTicker, markets] of byEvent) {
           let snapshots;
           try {
-            snapshots = await fetchAndCacheHistory(db, eventTicker, { days });
+            snapshots = await fetchAndCacheHistory(db, eventTicker);
           } catch (err) {
             if (err instanceof SubscriptionRequiredError) throw err;
             continue;
