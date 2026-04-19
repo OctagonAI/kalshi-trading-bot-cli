@@ -78,7 +78,7 @@ function buildEventQuery(
 }
 
 /** Process items in parallel batches of `concurrency`. */
-async function parallelMap<T, R>(
+export async function parallelMap<T, R>(
   items: T[],
   fn: (item: T) => Promise<R>,
   concurrency: number,

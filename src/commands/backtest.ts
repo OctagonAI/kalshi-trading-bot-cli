@@ -2,7 +2,7 @@ import type { ParsedArgs } from './parse-args.js';
 import type { CLIResponse } from './json.js';
 import { wrapSuccess } from './json.js';
 import { getDb } from '../db/index.js';
-import { discoverSettledMarkets, discoverOpenMarkets } from '../backtest/discovery.js';
+import { discoverSettledMarkets, discoverOpenMarkets, parallelMap } from '../backtest/discovery.js';
 import { fetchAndCacheHistory, selectSnapshotByDate, SubscriptionRequiredError, type OutcomeProbability } from '../backtest/fetcher.js';
 import { computeMetrics } from '../backtest/metrics.js';
 import type { BacktestResult, ScoredSignal } from '../backtest/types.js';
@@ -89,21 +89,24 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
           byEvent.set(m.event_ticker, arr);
         }
 
-        for (const [eventTicker, markets] of byEvent) {
+        // Fetch & score events concurrently — Octagon history is I/O-bound and
+        // processing them serially made cold-cache backtests take 15+ min.
+        const perEvent = await parallelMap([...byEvent.entries()], async ([eventTicker, markets]) => {
           let snapshots;
           try {
             snapshots = await fetchAndCacheHistory(db, eventTicker, { maxAgeDays });
           } catch (err) {
             if (err instanceof SubscriptionRequiredError) throw err;
-            continue;
+            return [] as ScoredSignal[];
           }
 
           // Find the snapshot closest to N days ago, rejecting snapshots
           // older than the prediction-age window so we don't score stale
           // model outputs as if they were recent.
           const snap = selectSnapshotByDate(snapshots, lookbackDate, minPredictionDate);
-          if (!snap) continue;
+          if (!snap) return [];
 
+          const out: ScoredSignal[] = [];
           for (const m of markets) {
             // Strict per-contract extraction — no event-level fallback.
             const perMarket = findOutcomeProb(snap.outcome_probabilities, m.ticker);
@@ -140,7 +143,7 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
             }
             if (capital <= 0) continue;
 
-            signals.push({
+            out.push({
               event_ticker: m.event_ticker,
               market_ticker: m.ticker,
               series_category: m.series_category,
@@ -156,7 +159,9 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
               close_time: m.close_time,
             });
           }
-        }
+          return out;
+        }, 10);
+        for (const arr of perEvent) signals.push(...arr);
       }
     } catch (err) {
       if (err instanceof SubscriptionRequiredError) {
@@ -169,74 +174,87 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
 
   // ─── UNRESOLVED: open markets with current Kalshi prices ───────────────
   if (!args.resolved) {
-    const openMarkets = await discoverOpenMarkets(db, { category: args.category });
+    try {
+      const openMarkets = await discoverOpenMarkets(db, { category: args.category });
 
-    // Group by event_ticker to batch history fetches (same as resolved path).
-    const openByEvent = new Map<string, typeof openMarkets>();
-    for (const m of openMarkets) {
-      const arr = openByEvent.get(m.event_ticker) ?? [];
-      arr.push(m);
-      openByEvent.set(m.event_ticker, arr);
-    }
-
-    for (const [eventTicker, markets] of openByEvent) {
-      let snapshots;
-      try {
-        snapshots = await fetchAndCacheHistory(db, eventTicker, { maxAgeDays });
-      } catch (err) {
-        if (err instanceof SubscriptionRequiredError) throw err;
-        continue;
+      // Group by event_ticker to batch history fetches (same as resolved path).
+      const openByEvent = new Map<string, typeof openMarkets>();
+      for (const m of openMarkets) {
+        const arr = openByEvent.get(m.event_ticker) ?? [];
+        arr.push(m);
+        openByEvent.set(m.event_ticker, arr);
       }
-      const snap = selectSnapshotByDate(snapshots, lookbackDate, minPredictionDate);
-      if (!snap) continue;
 
-      for (const m of markets) {
-      // Strict per-contract extraction — no event-level fallback.
-      const perMarket = findOutcomeProb(snap.outcome_probabilities, m.ticker);
-      if (!perMarket) continue;
-      const modelProb = perMarket.model_probability;
-      const marketThen = perMarket.market_probability;
-      if (!Number.isFinite(modelProb) || !Number.isFinite(marketThen)) continue;
-      const confidenceScore = snap.confidence_score ?? 0;
+      const perEvent = await parallelMap([...openByEvent.entries()], async ([eventTicker, markets]) => {
+        let snapshots;
+        try {
+          snapshots = await fetchAndCacheHistory(db, eventTicker, { maxAgeDays });
+        } catch (err) {
+          if (err instanceof SubscriptionRequiredError) throw err;
+          return [] as ScoredSignal[];
+        }
+        const snap = selectSnapshotByDate(snapshots, lookbackDate, minPredictionDate);
+        if (!snap) return [];
 
-      const marketNow = m.market_prob * 100; // current Kalshi price (0-100)
-      const edgePp = Math.round((modelProb - marketThen) * 10) / 10;
+        const out: ScoredSignal[] = [];
+        for (const m of markets) {
+          // Strict per-contract extraction — no event-level fallback.
+          const perMarket = findOutcomeProb(snap.outcome_probabilities, m.ticker);
+          if (!perMarket) continue;
+          const modelProb = perMarket.model_probability;
+          const marketThen = perMarket.market_probability;
+          if (!Number.isFinite(modelProb) || !Number.isFinite(marketThen)) continue;
+          const confidenceScore = snap.confidence_score ?? 0;
 
-      // Tradeable filter — per-contract volume from the Octagon snapshot.
-      const vol = contractVolume(perMarket, m.volume);
-      if (vol < minVolume) continue;
-      // Price is marketNow (the current transactable price for an open position).
-      if (marketNow < minPrice || marketNow > maxPrice) continue;
+          const marketNow = m.market_prob * 100; // current Kalshi price (0-100)
+          const edgePp = Math.round((modelProb - marketThen) * 10) / 10;
 
-      // M2M P&L and capital per $1 face value.
-      let pnl = 0;
-      let capital = 0;
-      if (edgePp > 0) {
-        pnl = (marketNow - marketThen) / 100;
-        capital = marketThen / 100;
-      } else if (edgePp < 0) {
-        pnl = (marketThen - marketNow) / 100;
-        capital = (100 - marketThen) / 100;
+          // Tradeable filter — per-contract volume from the Octagon snapshot.
+          const vol = contractVolume(perMarket, m.volume);
+          if (vol < minVolume) continue;
+          // Price is marketNow (the current transactable price for an open position).
+          if (marketNow < minPrice || marketNow > maxPrice) continue;
+
+          // M2M P&L and capital per $1 face value.
+          let pnl = 0;
+          let capital = 0;
+          if (edgePp > 0) {
+            pnl = (marketNow - marketThen) / 100;
+            capital = marketThen / 100;
+          } else if (edgePp < 0) {
+            pnl = (marketThen - marketNow) / 100;
+            capital = (100 - marketThen) / 100;
+          } else {
+            capital = marketThen / 100;
+          }
+          if (capital <= 0) continue;
+
+          out.push({
+            event_ticker: m.event_ticker,
+            market_ticker: m.ticker,
+            series_category: m.series_category,
+            model_prob: modelProb,
+            market_then: marketThen,
+            market_now: marketNow,
+            resolved: false,
+            edge_pp: edgePp,
+            pnl: Math.round(pnl * 10000) / 10000,
+            capital: Math.round(capital * 10000) / 10000,
+            edge_bucket: edgeBucketLabel(edgePp),
+            confidence_score: confidenceScore,
+            close_time: m.close_time,
+          });
+        }
+        return out;
+      }, 10);
+      for (const arr of perEvent) signals.push(...arr);
+    } catch (err) {
+      // Mirror the resolved block: a subscription wall hit while scoring open
+      // markets becomes a notice rather than crashing out before CSV export.
+      if (err instanceof SubscriptionRequiredError) {
+        subscriptionNotice = subscriptionNotice ?? err.message;
       } else {
-        capital = marketThen / 100;
-      }
-      if (capital <= 0) continue;
-
-      signals.push({
-        event_ticker: m.event_ticker,
-        market_ticker: m.ticker,
-        series_category: m.series_category,
-        model_prob: modelProb,
-        market_then: marketThen,
-        market_now: marketNow,
-        resolved: false,
-        edge_pp: edgePp,
-        pnl: Math.round(pnl * 10000) / 10000,
-        capital: Math.round(capital * 10000) / 10000,
-        edge_bucket: edgeBucketLabel(edgePp),
-        confidence_score: confidenceScore,
-        close_time: m.close_time,
-      });
+        throw err;
       }
     }
   }
