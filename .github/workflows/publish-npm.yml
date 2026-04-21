@@ -27,9 +27,6 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Upgrade npm (Trusted Publishing requires >= 11.5.1)
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
@@ -49,4 +46,7 @@ jobs:
           fi
 
       - name: Publish to npm (OIDC Trusted Publishing)
-        run: npm publish --access public
+        # npx fetches latest npm (>= 11.5.1 required for Trusted Publishing)
+        # without attempting an in-place upgrade of the bundled npm, which
+        # breaks partway through due to module resolution.
+        run: npx -y -p npm@latest npm publish --access public
