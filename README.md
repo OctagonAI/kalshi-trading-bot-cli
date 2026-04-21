@@ -43,6 +43,26 @@ bun start
 - **API keys (`.env`):** `~/.kalshi-bot/.env` — written by the setup wizard. A `.env` in the current directory takes precedence (handy for dev).
 - **First run** with no keys configured triggers the setup wizard automatically.
 
+### Updating
+
+Using `@latest` in the `bunx` command always pulls the newest published version — so `bunx kalshi-trading-bot-cli@latest` is the zero-friction path.
+
+If you ran `bunx kalshi-trading-bot-cli` without `@latest`, Bun may serve a cached copy. Force a refresh:
+
+```bash
+bunx kalshi-trading-bot-cli@latest   # pin latest for this invocation
+bun pm cache rm                      # or clear Bun's install cache
+```
+
+If you installed globally with `bun add -g kalshi-trading-bot-cli`:
+
+```bash
+bun update -g kalshi-trading-bot-cli         # update in place
+bun add -g kalshi-trading-bot-cli@latest     # or reinstall pinned to latest
+```
+
+Check your installed version with `kalshi --version` (or `bun pm ls -g | grep kalshi`).
+
 ## Example Session
 
 ```
