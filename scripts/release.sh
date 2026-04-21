@@ -103,4 +103,4 @@ echo -e "$BODY" | gh release create "$TAG" \
   --notes-file -
 
 echo ""
-echo "Released ${TAG}: https://github.com/OctagonAI/kalshi-deep-trading-bot-cli/releases/tag/${TAG}"
+echo "Released ${TAG}: https://github.com/OctagonAI/kalshi-trading-bot-cli/releases/tag/${TAG}"

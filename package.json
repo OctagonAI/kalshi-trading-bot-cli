@@ -2,12 +2,38 @@
   "name": "kalshi-trading-bot-cli",
   "version": "2.1.0",
   "description": "Kalshi Trading Bot CLI - AI-powered prediction market terminal.",
+  "license": "MIT",
+  "author": "Octagon AI, Inc.",
+  "homepage": "https://github.com/OctagonAI/kalshi-trading-bot-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OctagonAI/kalshi-trading-bot-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OctagonAI/kalshi-trading-bot-cli/issues"
+  },
+  "keywords": [
+    "kalshi",
+    "prediction-markets",
+    "trading-bot",
+    "cli",
+    "tui",
+    "ai",
+    "octagon",
+    "bun"
+  ],
   "type": "module",
   "main": "src/index.tsx",
   "bin": {
     "kalshi": "./src/index.tsx",
-    "kalshi-trading-bot-cli": "./src/index.tsx",
-    "kalshi-deep-trading-bot": "./src/index.tsx"
+    "kalshi-trading-bot-cli": "./src/index.tsx"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "start": "bun run src/index.tsx",
@@ -35,7 +61,6 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

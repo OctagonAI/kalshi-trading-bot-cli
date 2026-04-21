@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-import { config } from 'dotenv';
+// Side-effect import: env.ts performs the dotenv load against the canonical
+// ENV_PATH (~/.kalshi-bot/.env or CWD .env). Must run before any other module
+// reads process.env.
+import './utils/env.js';
 import { runCli } from './cli.js';
 import { parseArgs } from './commands/parse-args.js';
 import { dispatch } from './commands/dispatch.js';
 import { initTelemetry, trackEvent, shutdownTelemetry } from './utils/telemetry.js';
 import packageJson from '../package.json';
-
-// Load environment variables
-config({ quiet: true });
 
 const parsed = parseArgs();
 

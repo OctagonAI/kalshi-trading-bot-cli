@@ -1,0 +1,32 @@
+# Tests
+__tests__
+*.test.ts
+*.test.tsx
+*.itest.ts
+
+# Dev / CI
+.github
+scripts
+dist
+bun.lock
+package-lock.json
+tsconfig.json
+
+# Local secrets / artifacts
+.env
+.env.*
+*.pem
+chat_history.json
+coverage.json
+logs
+
+# Internal docs (not user-facing)
+AGENTS.md
+CLAUDE.md
+GUIDE.md
+.claude
+.dexter
+.kalshi-deep-trading-bot
+
+# OS junk
+.DS_Store

@@ -1,11 +1,15 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { resolve } from 'path';
 import { config } from 'dotenv';
 import { getProviderById } from '@/providers';
+import { appPath, getAppDir } from './paths.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-export const ENV_PATH = resolve(__dirname, '../../.env');
+// Resolve .env from a CWD override (dev workflow) or the home config dir
+// (default for `bunx` / global installs). The home path is also where
+// `saveApiKeyToEnv` writes new keys.
+const HOME_ENV_PATH = appPath('.env');
+const CWD_ENV_PATH = resolve(process.cwd(), '.env');
+export const ENV_PATH = existsSync(CWD_ENV_PATH) ? CWD_ENV_PATH : HOME_ENV_PATH;
 
 // Load .env on module import
 config({ path: ENV_PATH, quiet: true });
@@ -88,6 +92,7 @@ export function saveApiKeyToEnv(apiKeyName: string, apiKeyValue: string): boolea
       lines.push(`${apiKeyName}=${apiKeyValue}`);
     }
 
+    mkdirSync(getAppDir(), { recursive: true });
     writeFileSync(ENV_PATH, lines.join('\n'));
 
     // Reload environment variables

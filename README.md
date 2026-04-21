@@ -10,6 +10,18 @@ Integrates with the [Octagon Research API](https://app.octagonai.co) for AI-gene
 
 ## Quick Start
 
+Install [Bun](https://bun.com/), then run:
+
+```bash
+bunx kalshi-trading-bot-cli
+```
+
+That's it — no clone, no install. The setup wizard runs automatically on first launch and walks you through API keys.
+
+Prefer a global install? `bun add -g kalshi-trading-bot-cli` then run `kalshi`.
+
+Or work from a clone:
+
 ```bash
 git clone https://github.com/OctagonAI/kalshi-trading-bot-cli.git
 cd kalshi-trading-bot-cli
@@ -17,14 +29,18 @@ bun install
 bun start
 ```
 
-The setup wizard runs automatically on first launch — it walks you through API keys and validates connectivity. No `.env` editing required.
-
 > Don't have Bun? Install it with `curl -fsSL https://bun.com/install | bash`
+
+### Where things live
+
+- **Config, cache, SQLite DB:** `~/.kalshi-bot/`
+- **API keys (`.env`):** `~/.kalshi-bot/.env` — written by the setup wizard. A `.env` in the current directory takes precedence (handy for dev).
+- **First run** with no keys configured triggers the setup wizard automatically.
 
 ## Example Session
 
 ```
-$ bun start
+$ bunx kalshi-trading-bot-cli
 
 Welcome to Kalshi Trading Bot CLI
 Type help for commands, or just ask a question.
@@ -83,8 +99,8 @@ Type help for commands, or just ask a question.
 | `backtest` | Model accuracy scorecard + live edge scanner |
 | `portfolio` | Positions, P&L, risk snapshot |
 | `setup` | Re-run setup wizard (inside TUI) |
-| `init` | Launch setup wizard from CLI (`bun start init`) |
-| `clear-cache` | Delete local cache and rebuild (`bun start clear-cache`) |
+| `init` | Launch setup wizard from CLI (`kalshi init`) |
+| `clear-cache` | Delete local cache and rebuild (`kalshi clear-cache`) |
 | `help [command]` | Detailed help for a command |
 
 ### Flags
@@ -124,14 +140,14 @@ Does the model find real edge? Look back N days, compare what the model said the
 - `flat_bet_roi` is capital-weighted: `sum(pnl) / sum(capital)`, where `capital = kp/100` for YES edges and `(100 - kp)/100` for NO edges.
 
 ```bash
-bun start backtest                              # 15-day lookback (default)
-bun start backtest --days 30                    # 30-day lookback
-bun start backtest --max-age 14                 # only score predictions <=14d old
-bun start backtest --resolved                   # resolved only
-bun start backtest --unresolved --min-edge 10   # unresolved, 10pp threshold
-bun start backtest --category crypto            # filter by category
-bun start backtest --min-volume 10 --min-price 5 --max-price 95   # tradeable contracts only
-bun start backtest --export results.csv         # per-market detail
+kalshi backtest                              # 15-day lookback (default)
+kalshi backtest --days 30                    # 30-day lookback
+kalshi backtest --max-age 14                 # only score predictions <=14d old
+kalshi backtest --resolved                   # resolved only
+kalshi backtest --unresolved --min-edge 10   # unresolved, 10pp threshold
+kalshi backtest --category crypto            # filter by category
+kalshi backtest --min-volume 10 --min-price 5 --max-price 95   # tradeable contracts only
+kalshi backtest --export results.csv         # per-market detail
 ```
 
 ```text
@@ -168,10 +184,10 @@ Set `KALSHI_USE_DEMO=true` in your `.env` to use Kalshi's demo environment. All 
 Every command supports `--json` for structured output, making the bot easy to orchestrate from scripts or AI agents.
 
 ```bash
-bun start search crypto --json
-bun start analyze KXBTC-26APR-B95000 --json
-bun start buy KXBTC-26APR-B95000 3 58 --json
-bun start portfolio --json
+kalshi search crypto --json
+kalshi analyze KXBTC-26APR-B95000 --json
+kalshi buy KXBTC-26APR-B95000 3 58 --json
+kalshi portfolio --json
 ```
 
 ### JSON Response Format
@@ -206,19 +222,19 @@ Errors return `"ok": false` with an `error` object containing `code` and `messag
 
 ```bash
 # 1. Find markets
-MARKETS=$(bun start search crypto --json | jq '.data')
+MARKETS=$(kalshi search crypto --json | jq '.data')
 
 # 2. Analyze top pick
-ANALYSIS=$(bun start analyze KXBTC-26APR-B95000 --json)
+ANALYSIS=$(kalshi analyze KXBTC-26APR-B95000 --json)
 EDGE=$(echo "$ANALYSIS" | jq '.data.edge')
 
 # 3. Trade if edge is high enough
 if (( $(echo "$EDGE > 0.05" | bc -l) )); then
-  bun start buy KXBTC-26APR-B95000 3 58 --json
+  kalshi buy KXBTC-26APR-B95000 3 58 --json
 fi
 
 # 4. Check portfolio
-bun start portfolio --json
+kalshi portfolio --json
 ```
 
 The `watch --theme` command outputs NDJSON (one JSON object per scan cycle), suitable for streaming pipelines.
@@ -227,11 +243,11 @@ The `watch --theme` command outputs NDJSON (one JSON object per scan cycle), sui
 
 ### Environment Variables
 
-```bash
-cp env.example .env
-```
+The setup wizard (run automatically on first launch, or invoke with `kalshi init`) handles this interactively. To edit by hand:
 
-The setup wizard (`bun start setup`) handles this interactively, but you can also edit `.env` directly:
+```bash
+cp env.example ~/.kalshi-bot/.env
+```
 
 **Required:**
 
@@ -263,9 +279,9 @@ Each Octagon report costs 3 credits. Reports are cached with tiered TTLs based o
 ### Runtime Settings
 
 ```bash
-bun start config                              # List all settings
-bun start config risk.kelly_multiplier        # Get a value
-bun start config risk.kelly_multiplier 0.3    # Set a value
+kalshi config                              # List all settings
+kalshi config risk.kelly_multiplier        # Get a value
+kalshi config risk.kelly_multiplier 0.3    # Set a value
 ```
 
 | Setting | Default | Description |
@@ -322,7 +338,7 @@ TELEMETRY_ENABLED=false
 Or set the environment variable before running:
 
 ```bash
-TELEMETRY_ENABLED=false bun start
+TELEMETRY_ENABLED=false bunx kalshi-trading-bot-cli
 ```
 
 ## Documentation
