@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # required for `gh workflow run` (publish-npm dispatch)
     steps:
       - uses: actions/checkout@v4
         with:
