@@ -922,7 +922,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     editor.addToHistory(msg);
   }
 
-  // Auto-launch setup wizard if credentials are missing or `bun start init` was used
+  // Auto-launch setup wizard if credentials are missing or `kalshi init` was used
   if (!hasKalshiCreds || options?.forceSetup) {
     setupWizard.start();
   }

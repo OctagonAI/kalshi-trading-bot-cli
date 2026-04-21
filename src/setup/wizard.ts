@@ -202,13 +202,13 @@ export class SetupWizardController {
       if (this.configWritten) {
         lines.push('');
         lines.push(theme.muted('  Default thresholds (to customize, run the command shown):'));
-        lines.push(`    min_edge_threshold  = 5%     ${theme.muted('e.g. bun start config risk.min_edge_threshold 0.10')}`);
-        lines.push(`    kelly_multiplier    = 0.5    ${theme.muted('e.g. bun start config risk.kelly_multiplier 0.25')}`);
-        lines.push(`    max_position_pct    = 10%    ${theme.muted('e.g. bun start config risk.max_position_pct 0.05')}`);
-        lines.push(`    daily_loss_limit    = $200   ${theme.muted('e.g. bun start config risk.daily_loss_limit 100')}`);
-        lines.push(`    max_positions       = 10     ${theme.muted('e.g. bun start config risk.max_positions 5')}`);
+        lines.push(`    min_edge_threshold  = 5%     ${theme.muted('e.g. kalshi config risk.min_edge_threshold 0.10')}`);
+        lines.push(`    kelly_multiplier    = 0.5    ${theme.muted('e.g. kalshi config risk.kelly_multiplier 0.25')}`);
+        lines.push(`    max_position_pct    = 10%    ${theme.muted('e.g. kalshi config risk.max_position_pct 0.05')}`);
+        lines.push(`    daily_loss_limit    = $200   ${theme.muted('e.g. kalshi config risk.daily_loss_limit 100')}`);
+        lines.push(`    max_positions       = 10     ${theme.muted('e.g. kalshi config risk.max_positions 5')}`);
         lines.push('');
-        lines.push(theme.muted('  Run "bun start config" to see all settings.'));
+        lines.push(theme.muted('  Run "kalshi config" to see all settings.'));
       }
       return lines;
     }

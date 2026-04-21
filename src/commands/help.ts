@@ -109,12 +109,12 @@ from the snapshot when available, else current Kalshi lifetime volume.
 ROI is capital-weighted: sum(pnl) / sum(capital) across edge signals, where capital
 is kp/100 for YES edges and (100-kp)/100 for NO edges (matches Supabase methodology).`,
 
-    'clear-cache': `**${ctx === 'cli' ? '' : 'bun start '}clear-cache** — Delete local cache
+    'clear-cache': `**${ctx === 'cli' ? '' : 'kalshi '}clear-cache** — Delete local cache
 
-${ctx === 'cli' ? `${p}` : 'bun start '}clear-cache                Delete the local SQLite database (~/.kalshi-bot/kalshi-bot.db)
+${ctx === 'cli' ? `${p}` : 'kalshi '}clear-cache                Delete the local SQLite database (~/.kalshi-bot/kalshi-bot.db)
                                A fresh database will be created on next command.
 
-Use this when the local cache is corrupted or you want to start fresh.${ctx !== 'cli' ? '\nRun from terminal: bun start clear-cache' : ''}`,
+Use this when the local cache is corrupted or you want to start fresh.${ctx !== 'cli' ? '\nRun from terminal: kalshi clear-cache' : ''}`,
 
     init: `**${p}init** — Re-run setup wizard
 
@@ -211,8 +211,8 @@ Account:
 System:
   /model                         Change LLM model/provider
   /setup                         Re-run setup wizard
-  init                           Launch with setup wizard (run: bun start init)
-  clear-cache                    Delete local cache (run: bun start clear-cache)
+  init                           Launch with setup wizard (run: kalshi init)
+  clear-cache                    Delete local cache (run: kalshi clear-cache)
   /help [command]                Show help for a command
   /quit                          Quit
 

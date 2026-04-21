@@ -8,9 +8,17 @@ Integrates with the [Octagon Research API](https://app.octagonai.co) for AI-gene
 
 ![Kalshi Trading Bot CLI](assets/screenshot.png)
 
-## Quick Start
+## Prerequisites
 
-Install [Bun](https://bun.com/), then run:
+- **[Bun](https://bun.com/) ≥ 1.1** (required — the bot uses `bun:sqlite` and runs `.tsx` directly; Node.js won't work)
+  ```bash
+  curl -fsSL https://bun.com/install | bash
+  ```
+- A **Kalshi** account with API access (API key + RSA private key)
+- One **LLM provider key** (OpenAI / Anthropic / Google / xAI / OpenRouter / Ollama). The setup wizard collects these on first run.
+- Optional: an **[Octagon](https://app.octagonai.co)** key for AI edge analysis, and a **Tavily** key for web research.
+
+## Quick Start
 
 ```bash
 bunx kalshi-trading-bot-cli
@@ -28,8 +36,6 @@ cd kalshi-trading-bot-cli
 bun install
 bun start
 ```
-
-> Don't have Bun? Install it with `curl -fsSL https://bun.com/install | bash`
 
 ### Where things live
 

@@ -8,18 +8,41 @@ AI-powered prediction market terminal for [Kalshi](https://kalshi.com). Ask natu
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) runtime
-- A Kalshi account with API access (API key + RSA private key)
-- At least one LLM API key (OpenAI, Anthropic, Google, xAI, or OpenRouter)
+- **[Bun](https://bun.com/) ≥ 1.1** — required. The bot uses `bun:sqlite` and runs `.tsx` directly, so Node.js will not work.
+  ```bash
+  curl -fsSL https://bun.com/install | bash
+  ```
+- A **Kalshi** account with API access (API key + RSA private key)
+- At least one **LLM API key** (OpenAI, Anthropic, Google, xAI, OpenRouter, or a local Ollama)
+- Optional: **[Octagon](https://app.octagonai.co)** key for AI edge analysis, **Tavily** key for web research
 
 ### Setup
 
 ```bash
-cp env.example .env
-# Fill in your keys (see Environment Variables below)
-npm start        # or: bun run src/index.tsx
-npm run dev      # hot-reload mode
+bunx kalshi-trading-bot-cli
 ```
+
+That's it — no clone required. The setup wizard runs automatically on first launch and writes your API keys to `~/.kalshi-bot/.env`.
+
+Other ways to run it:
+
+```bash
+bun add -g kalshi-trading-bot-cli  # then just `kalshi`
+```
+
+Or from a clone (development):
+
+```bash
+git clone https://github.com/OctagonAI/kalshi-trading-bot-cli.git
+cd kalshi-trading-bot-cli
+bun install
+bun start        # or `bun run dev` for hot-reload
+```
+
+### Where things live
+
+- **Config, cache, SQLite DB:** `~/.kalshi-bot/`
+- **API keys (`.env`):** `~/.kalshi-bot/.env`. A `.env` in the current directory takes precedence (dev override).
 
 ### Environment Variables
 
