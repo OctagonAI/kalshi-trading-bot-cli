@@ -65,7 +65,7 @@ Check your installed version with `kalshi --version` (or `bun pm ls -g | grep ka
 
 ## Example Session
 
-```
+```text
 $ bunx kalshi-trading-bot-cli@latest
 
 Welcome to Kalshi Trading Bot CLI
