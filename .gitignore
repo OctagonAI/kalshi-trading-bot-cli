@@ -61,3 +61,6 @@ logs/
 coverage.json
 *.pem
 chat_history.json
+
+# One-off backfill output (scripts/backfill-octagon.ts)
+scripts/backfill-octagon-out/
