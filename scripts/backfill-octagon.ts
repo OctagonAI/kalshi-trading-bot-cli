@@ -4,10 +4,14 @@
  * (in priority categories, not already covered by Octagon) through the
  * Octagon prediction-markets agent, sequentially.
  *
- * Run: bun scripts/backfill-octagon.ts [--limit 500] [--dry-run] [--categories Crypto,Politics,...]
+ * Run: bun scripts/backfill-octagon.ts [--limit 500] [--dry-run] [--refresh] [--categories Crypto,Politics,...]
  *
  * Output: one JSONL file per run under scripts/backfill-octagon-out/.
- * Resumable: re-running picks up where it left off by reading existing JSONL.
+ *   - default runs write to backfill-<stamp>.jsonl
+ *   - --refresh runs write to refresh-<stamp>.jsonl
+ * Resumable: default runs skip events present in any prior backfill-*.jsonl
+ * or refresh-*.jsonl; refresh runs only skip events present in prior
+ * refresh-*.jsonl (so old cached results don't block a fresh refresh).
  */
 import 'dotenv/config';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
@@ -39,18 +43,20 @@ const OUT_DIR = join(import.meta.dir, 'backfill-octagon-out');
 interface Args {
   limit: number;
   dryRun: boolean;
+  refresh: boolean;
   categories: Set<string>;
 }
 
 function parseArgs(argv: string[]): Args {
-  const out: Args = { limit: 500, dryRun: false, categories: new Set(DEFAULT_CATEGORIES) };
+  const out: Args = { limit: 500, dryRun: false, refresh: false, categories: new Set(DEFAULT_CATEGORIES) };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--refresh') out.refresh = true;
     else if (a === '--limit') out.limit = Number(argv[++i]);
     else if (a === '--categories') out.categories = new Set(argv[++i].split(',').map((s) => s.trim()).filter(Boolean));
     else if (a === '--help' || a === '-h') {
-      console.log('Usage: bun scripts/backfill-octagon.ts [--limit N] [--dry-run] [--categories a,b,c]');
+      console.log('Usage: bun scripts/backfill-octagon.ts [--limit N] [--dry-run] [--refresh] [--categories a,b,c]');
       process.exit(0);
     } else {
       throw new Error(`Unknown arg: ${a}`);
@@ -77,12 +83,18 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-/** Read all prior JSONL outputs and return the set of event_tickers already processed. */
-function loadCompletedTickers(): Set<string> {
+/**
+ * Read prior JSONL outputs and return the set of event_tickers already processed.
+ * In default mode we consider all output files (refresh + default runs both
+ * count as "covered"). In refresh mode we only consider prior refresh-*.jsonl
+ * so a re-refresh isn't blocked by stale default-mode results.
+ */
+function loadCompletedTickers(refreshMode: boolean): Set<string> {
   const set = new Set<string>();
   if (!existsSync(OUT_DIR)) return set;
   for (const name of readdirSync(OUT_DIR)) {
     if (!name.endsWith('.jsonl')) continue;
+    if (refreshMode && !name.startsWith('refresh-')) continue;
     const path = join(OUT_DIR, name);
     const content = readFileSync(path, 'utf-8');
     for (const line of content.split('\n')) {
@@ -166,19 +178,27 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   requireEnv();
 
-  console.log(`[backfill] limit=${args.limit} dryRun=${args.dryRun} categories=${[...args.categories].join(',')}`);
+  console.log(
+    `[backfill] limit=${args.limit} dryRun=${args.dryRun} refresh=${args.refresh} categories=${[...args.categories].join(',')}`
+  );
   console.log(`[backfill] OCTAGON_BASE_URL=${process.env.OCTAGON_BASE_URL}`);
 
-  // 1. Octagon dedupe set
-  console.log('[octagon] fetching already-cached event tickers...');
-  const octagonEvents = await fetchAllOctagonEvents();
-  const octagonTickers = new Set(octagonEvents.map((e) => e.event_ticker));
-  console.log(`[octagon] already covers ${octagonTickers.size} events`);
+  // 1. Octagon dedupe set — skipped in refresh mode (we want to refresh those too)
+  let octagonTickers = new Set<string>();
+  if (args.refresh) {
+    console.log('[octagon] refresh mode — skipping events-API dedupe');
+  } else {
+    console.log('[octagon] fetching already-cached event tickers...');
+    const octagonEvents = await fetchAllOctagonEvents();
+    octagonTickers = new Set(octagonEvents.map((e) => e.event_ticker));
+    console.log(`[octagon] already covers ${octagonTickers.size} events`);
+  }
 
   // 2. Local resume set (events already in our JSONL output)
-  const completedTickers = loadCompletedTickers();
+  const completedTickers = loadCompletedTickers(args.refresh);
   if (completedTickers.size > 0) {
-    console.log(`[backfill] resuming — ${completedTickers.size} events already in scripts/backfill-octagon-out/`);
+    const scope = args.refresh ? 'refresh-*.jsonl' : 'all *.jsonl';
+    console.log(`[backfill] resuming — ${completedTickers.size} events already in ${scope}`);
   }
 
   // 3. Fetch all open Kalshi events with nested markets
@@ -252,8 +272,10 @@ async function main(): Promise<void> {
   // 6. Sequential Octagon calls, streaming JSONL output
   mkdirSync(OUT_DIR, { recursive: true });
   const runStamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outPath = join(OUT_DIR, `backfill-${runStamp}.jsonl`);
-  console.log(`[backfill] writing to ${outPath}`);
+  const prefix = args.refresh ? 'refresh' : 'backfill';
+  const outPath = join(OUT_DIR, `${prefix}-${runStamp}.jsonl`);
+  const variant = args.refresh ? 'refresh' : 'default';
+  console.log(`[backfill] variant=${variant} writing to ${outPath}`);
 
   let succeeded = 0;
   let failed = 0;
@@ -263,7 +285,7 @@ async function main(): Promise<void> {
     const tag = `[${i + 1}/${enriched.length}] ${ev.event_ticker}`;
     process.stdout.write(`${tag} — calling Octagon...`);
     try {
-      const response = await callOctagon(url, 'default');
+      const response = await callOctagon(url, variant);
       const elapsedSec = ((Date.now() - start) / 1000).toFixed(1);
       const row = {
         event_ticker: ev.event_ticker,
@@ -272,6 +294,7 @@ async function main(): Promise<void> {
         category: ev.category,
         total_volume_24h: volume,
         kalshi_url: url,
+        variant,
         fetched_at: new Date().toISOString(),
         elapsed_sec: Number(elapsedSec),
         octagon_response: response,
@@ -292,6 +315,7 @@ async function main(): Promise<void> {
         category: ev.category,
         total_volume_24h: volume,
         kalshi_url: url,
+        variant,
         fetched_at: new Date().toISOString(),
         elapsed_sec: Number(elapsedSec),
         error: msg,
