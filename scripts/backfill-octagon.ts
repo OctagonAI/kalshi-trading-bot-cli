@@ -174,6 +174,53 @@ async function buildKalshiUrl(ev: KalshiEvent): Promise<string> {
   return `https://kalshi.com/markets/${ev.series_ticker.toLowerCase()}/${slug}/${ev.event_ticker.toLowerCase()}`;
 }
 
+/**
+ * Decide whether an error from callOctagon is worth retrying at the script level.
+ * callOctagon already retries 502/503/504 a few times internally with short
+ * backoffs (15/30/60s). We add an outer retry layer for two reasons:
+ *  - Bun's fetch raises a raw "The operation timed out." after ~5min when the
+ *    Octagon agent endpoint holds the connection idle; this is *not* caught
+ *    by callOctagon's AbortError branch.
+ *  - 502s from the agent often mean the remote pipeline is briefly overloaded;
+ *    waiting longer than the internal 60s ceiling and retrying tends to work.
+ */
+function isRetryableOctagonError(msg: string): boolean {
+  return (
+    /operation timed out/i.test(msg) ||
+    /timed? ?out/i.test(msg) ||
+    /\b502\b|bad gateway/i.test(msg) ||
+    /\b503\b|service unavailable/i.test(msg) ||
+    /\b504\b|gateway timeout/i.test(msg) ||
+    /server_error/i.test(msg) ||
+    /Prediction markets refresh failed/i.test(msg)
+  );
+}
+
+async function callOctagonWithRetry(
+  url: string,
+  variant: 'default' | 'cache' | 'refresh',
+  attempts = 3,
+  backoffsMs = [60_000, 180_000],
+): Promise<string> {
+  let lastErr: Error | null = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await callOctagon(url, variant);
+    } catch (err) {
+      lastErr = err as Error;
+      const msg = lastErr.message ?? '';
+      const isLast = i === attempts - 1;
+      if (isLast || !isRetryableOctagonError(msg)) throw lastErr;
+      const wait = backoffsMs[i] ?? backoffsMs[backoffsMs.length - 1] ?? 60_000;
+      process.stdout.write(
+        `\n  ↳ retryable error (attempt ${i + 1}/${attempts}): ${msg.split('\n')[0].slice(0, 140)}\n  ↳ waiting ${Math.round(wait / 1000)}s before retry...`,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr ?? new Error('callOctagonWithRetry: unreachable');
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   requireEnv();
@@ -285,7 +332,7 @@ async function main(): Promise<void> {
     const tag = `[${i + 1}/${enriched.length}] ${ev.event_ticker}`;
     process.stdout.write(`${tag} — calling Octagon...`);
     try {
-      const response = await callOctagon(url, variant);
+      const response = await callOctagonWithRetry(url, variant);
       const elapsedSec = ((Date.now() - start) / 1000).toFixed(1);
       const row = {
         event_ticker: ev.event_ticker,
