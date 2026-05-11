@@ -180,8 +180,6 @@ kalshi backtest --export results.csv         # per-market detail
 Octagon Backtest — 15-day lookback (04/02 – 04/17)
 ══════════════════════════════════════════════════════════
 
-VERDICT: Model has edge (Skill +12.5% [CI: +4.1%, +20.8%]; ROI +7.8%)
-
   Events         83
   Markets        247   (142 resolved, 105 unresolved)
   Brier (Octagon)   0.168

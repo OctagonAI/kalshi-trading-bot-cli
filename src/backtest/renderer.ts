@@ -37,8 +37,6 @@ export function formatBacktestHuman(result: BacktestResult, opts?: FormatOpts): 
   }
 
   // Unified scorecard
-  lines.push(`VERDICT: ${result.verdict.summary}`);
-  lines.push('');
   lines.push(`  Events         ${result.events_scored}`);
   lines.push(`  Markets        ${result.markets_resolved + result.markets_unresolved}   (${result.markets_resolved} resolved, ${result.markets_unresolved} unresolved)`);
   lines.push('');
