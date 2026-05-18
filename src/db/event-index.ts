@@ -17,8 +17,18 @@ export interface IndexedEvent {
  * Search the local event index using keyword matching.
  * All keywords must match against title, event_ticker, series_ticker, or category.
  * Returns up to `limit` results.
+ *
+ * By default, only events with at least one active (open/active status, not past
+ * close_time) market are returned, and expired markets are stripped from each
+ * event's `markets_json`. Pass `{ includeExpired: true }` to disable both filters.
  */
-export function searchEventIndex(db: Database, query: string, limit = 50): IndexedEvent[] {
+export function searchEventIndex(
+  db: Database,
+  query: string,
+  limit = 50,
+  options: { includeExpired?: boolean } = {},
+): IndexedEvent[] {
+  const { includeExpired = false } = options;
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
@@ -30,10 +40,20 @@ export function searchEventIndex(db: Database, query: string, limit = 50): Index
   const conditions = keywords.map((_, i) => `(search_text LIKE $kw${i})`);
   const whereClause = conditions.join(' AND ');
 
-  const params: Record<string, string | number> = { $limit: limit, $now: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const params: Record<string, string | number> = { $limit: limit, $now: now };
   keywords.forEach((kw, i) => {
     params[`$kw${i}`] = `%${kw}%`;
   });
+
+  // Require at least one active market unless caller opts in to expired events.
+  const activeMarketsClause = includeExpired
+    ? ''
+    : `AND EXISTS (
+        SELECT 1 FROM json_each(markets_json)
+        WHERE json_extract(value, '$.status') IN ('open','active')
+          AND (json_extract(value, '$.close_time') IS NULL OR json_extract(value, '$.close_time') > $now)
+      )`;
 
   // Use a CTE to compute search_text, filter expired markets, and rank by open-market volume descending
   const fullSql = `
@@ -46,6 +66,7 @@ export function searchEventIndex(db: Database, query: string, limit = 50): Index
       SELECT event_ticker, series_ticker, title, category, strike_date, sub_title, tags, markets_json, indexed_at
       FROM indexed
       WHERE ${whereClause}
+        ${activeMarketsClause}
     )
     SELECT *
     FROM matched
@@ -62,7 +83,62 @@ export function searchEventIndex(db: Database, query: string, limit = 50): Index
     LIMIT $limit
   `;
 
-  return db.query(fullSql).all(params) as IndexedEvent[];
+  const rows = db.query(fullSql).all(params) as IndexedEvent[];
+  if (includeExpired) return rows;
+
+  // Strip expired markets from each event's markets_json so callers never see them.
+  return rows.map((r) => ({
+    ...r,
+    markets_json: filterActiveMarketsJson(r.markets_json, now),
+  }));
+}
+
+/**
+ * Predicate shared by every call site that filters expired markets.
+ * "Active" means status in ('open','active') AND (no close_time or close_time > now).
+ */
+function isActiveMarketRecord(record: Record<string, unknown>, nowIso: string): boolean {
+  const status = record.status;
+  if (status !== 'open' && status !== 'active') return false;
+  const closeTime = record.close_time;
+  if (closeTime != null && typeof closeTime === 'string' && closeTime <= nowIso) return false;
+  return true;
+}
+
+/**
+ * Parse markets_json from the index into an array of object records.
+ * Returns [] on parse failure or non-array payloads, and drops any non-object entries.
+ */
+function parseMarketsJsonSafe(markets_json: string | null): Array<Record<string, unknown>> {
+  if (!markets_json) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(markets_json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null);
+}
+
+/**
+ * Parse markets_json, drop markets that aren't currently active, and re-serialize.
+ * Returns the original string on parse failure (so callers don't lose data they could re-parse).
+ */
+function filterActiveMarketsJson(markets_json: string | null, nowIso: string): string | null {
+  if (!markets_json) return markets_json;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(markets_json);
+  } catch {
+    return markets_json;
+  }
+  if (!Array.isArray(parsed)) return markets_json;
+  const active = parsed.filter(
+    (m): m is Record<string, unknown> =>
+      typeof m === 'object' && m !== null && isActiveMarketRecord(m as Record<string, unknown>, nowIso),
+  );
+  return JSON.stringify(active);
 }
 
 /**
@@ -235,9 +311,19 @@ export function setLastRefresh(db: Database, timestamp: number): void {
 /**
  * Reconstruct KalshiEvent[] from the local index for given event tickers.
  * Parses markets_json back into nested market objects.
+ *
+ * By default, expired markets (status not open/active, or past close_time) are
+ * stripped from each event. Pass `{ includeExpired: true }` to keep them.
  */
-export function getEventsFromIndex(db: Database, eventTickers: string[]): KalshiEvent[] {
+export function getEventsFromIndex(
+  db: Database,
+  eventTickers: string[],
+  options: { includeExpired?: boolean } = {},
+): KalshiEvent[] {
   if (eventTickers.length === 0) return [];
+
+  const { includeExpired = false } = options;
+  const nowIso = new Date().toISOString();
 
   const placeholders = eventTickers.map(() => '?').join(',');
   const rows = db
@@ -248,25 +334,22 @@ export function getEventsFromIndex(db: Database, eventTickers: string[]): Kalshi
     )
     .all(...eventTickers) as IndexedEvent[];
 
-  return rows
-    .map((r) => {
-      let markets: unknown[] = [];
-      try {
-        markets = r.markets_json ? JSON.parse(r.markets_json) : [];
-      } catch {
-        // Corrupted markets_json — skip markets for this event
-      }
-      return {
-        event_ticker: r.event_ticker,
-        series_ticker: r.series_ticker ?? '',
-        title: r.title,
-        category: r.category ?? '',
-        sub_title: r.sub_title ?? '',
-        strike_date: r.strike_date ?? '',
-        mutually_exclusive: false,
-        markets,
-      } as KalshiEvent;
-    });
+  return rows.map((r) => {
+    let markets = parseMarketsJsonSafe(r.markets_json);
+    if (!includeExpired) {
+      markets = markets.filter((m) => isActiveMarketRecord(m, nowIso));
+    }
+    return {
+      event_ticker: r.event_ticker,
+      series_ticker: r.series_ticker ?? '',
+      title: r.title,
+      category: r.category ?? '',
+      sub_title: r.sub_title ?? '',
+      strike_date: r.strike_date ?? '',
+      mutually_exclusive: false,
+      markets: markets as unknown as KalshiMarket[],
+    } as KalshiEvent;
+  });
 }
 
 /**
@@ -284,14 +367,9 @@ export function getTopEventsByVolume(db: Database, limit: number): KalshiEvent[]
 
   const events: Array<{ event: KalshiEvent; totalVolume: number }> = [];
   for (const r of rows) {
-    let markets: any[] = [];
-    try {
-      markets = r.markets_json ? JSON.parse(r.markets_json) : [];
-    } catch {
-      // Corrupted markets_json — treat as no markets
-    }
+    const markets = parseMarketsJsonSafe(r.markets_json);
     const totalVolume = markets.reduce(
-      (sum: number, m: any) => sum + (parseFloat(m.volume) || parseFloat(m.volume_fp) || 0),
+      (sum, m) => sum + (parseFloat(String(m.volume ?? '')) || parseFloat(String(m.volume_fp ?? '')) || 0),
       0,
     );
     events.push({
@@ -303,7 +381,7 @@ export function getTopEventsByVolume(db: Database, limit: number): KalshiEvent[]
         sub_title: r.sub_title ?? '',
         strike_date: r.strike_date ?? '',
         mutually_exclusive: false,
-        markets,
+        markets: markets as unknown as KalshiMarket[],
       } as KalshiEvent,
       totalVolume,
     });

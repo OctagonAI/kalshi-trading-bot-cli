@@ -9,6 +9,7 @@ import { openPosition, closePosition, getOpenPositions, getPositionWithEdge } fr
 import { logTrade, getTradesForPosition, getRecentTrades } from '../trades.js';
 import { insertRiskSnapshot, getLatestSnapshot, getDrawdownHistory } from '../risk.js';
 import { createAlert, getPendingAlerts, markAlertSent } from '../alerts.js';
+import { searchEventIndex, getEventsFromIndex } from '../event-index.js';
 
 let db: Database;
 
@@ -378,5 +379,100 @@ describe('alerts', () => {
 
     markAlertSent(db, 'alert-001');
     expect(getPendingAlerts(db)).toHaveLength(0);
+  });
+});
+
+describe('event_index search', () => {
+  const insertIndexed = (
+    db: Database,
+    row: { event_ticker: string; title: string; markets: Array<Record<string, unknown>> },
+  ) => {
+    db.query(
+      `INSERT INTO event_index (event_ticker, series_ticker, title, category, strike_date, sub_title, tags, markets_json, indexed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(row.event_ticker, null, row.title, null, null, null, null, JSON.stringify(row.markets), Date.now());
+  };
+
+  const yesterday = () => new Date(Date.now() - 86400000).toISOString();
+  const tomorrow = () => new Date(Date.now() + 86400000).toISOString();
+
+  test('defaults to active-only events and strips expired markets', () => {
+    insertIndexed(db, {
+      event_ticker: 'EXPIRED',
+      title: 'Bitcoin expired event',
+      markets: [
+        { ticker: 'X-1', status: 'finalized', volume: 100, close_time: yesterday() },
+        { ticker: 'X-2', status: 'inactive', volume: 50 },
+      ],
+    });
+    insertIndexed(db, {
+      event_ticker: 'STALE',
+      title: 'Bitcoin stale event',
+      markets: [{ ticker: 'S-1', status: 'active', volume: 200, close_time: yesterday() }],
+    });
+    insertIndexed(db, {
+      event_ticker: 'MIXED',
+      title: 'Bitcoin mixed event',
+      markets: [
+        { ticker: 'M-1', status: 'active', volume: 100, close_time: tomorrow() },
+        { ticker: 'M-2', status: 'finalized', volume: 50, close_time: yesterday() },
+      ],
+    });
+    insertIndexed(db, {
+      event_ticker: 'LIVE',
+      title: 'Bitcoin live event',
+      markets: [
+        { ticker: 'L-1', status: 'active', volume: 500, close_time: tomorrow() },
+        { ticker: 'L-2', status: 'open', volume: 300, close_time: tomorrow() },
+      ],
+    });
+
+    const active = searchEventIndex(db, 'bitcoin', 50);
+    const tickers = active.map((r) => r.event_ticker).sort();
+    expect(tickers).toEqual(['LIVE', 'MIXED']);
+
+    const mixed = active.find((r) => r.event_ticker === 'MIXED');
+    const mixedMarkets = JSON.parse(mixed!.markets_json!);
+    expect(mixedMarkets).toHaveLength(1);
+    expect(mixedMarkets[0].ticker).toBe('M-1');
+  });
+
+  test('includeExpired returns all matching events with all markets', () => {
+    insertIndexed(db, {
+      event_ticker: 'EXPIRED',
+      title: 'Bitcoin expired event',
+      markets: [{ ticker: 'X-1', status: 'finalized', volume: 100, close_time: yesterday() }],
+    });
+    insertIndexed(db, {
+      event_ticker: 'LIVE',
+      title: 'Bitcoin live event',
+      markets: [{ ticker: 'L-1', status: 'active', volume: 500, close_time: tomorrow() }],
+    });
+
+    const all = searchEventIndex(db, 'bitcoin', 50, { includeExpired: true });
+    const tickers = all.map((r) => r.event_ticker).sort();
+    expect(tickers).toEqual(['EXPIRED', 'LIVE']);
+
+    const expired = all.find((r) => r.event_ticker === 'EXPIRED');
+    expect(JSON.parse(expired!.markets_json!)).toHaveLength(1);
+  });
+
+  test('getEventsFromIndex strips expired markets by default', () => {
+    insertIndexed(db, {
+      event_ticker: 'MIXED',
+      title: 'Mixed',
+      markets: [
+        { ticker: 'M-1', status: 'active', volume: 100, close_time: tomorrow() },
+        { ticker: 'M-2', status: 'finalized', volume: 50, close_time: yesterday() },
+      ],
+    });
+
+    const [event] = getEventsFromIndex(db, ['MIXED']);
+    const markets = (event!.markets ?? []) as unknown as Array<Record<string, unknown>>;
+    expect(markets).toHaveLength(1);
+    expect(markets[0]!.ticker).toBe('M-1');
+
+    const [allEvent] = getEventsFromIndex(db, ['MIXED'], { includeExpired: true });
+    expect(allEvent!.markets).toHaveLength(2);
   });
 });

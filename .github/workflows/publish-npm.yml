@@ -37,11 +37,11 @@ jobs:
         run: bun test
 
       - name: Verify tag matches package.json version
-        if: github.event_name == 'push'
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           if [ "v${PKG_VERSION}" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json v${PKG_VERSION}"
+            echo "Ref ${GITHUB_REF_NAME} does not match package.json v${PKG_VERSION}"
+            echo "Publish must be triggered from a tag matching the package.json version."
             exit 1
           fi
 
