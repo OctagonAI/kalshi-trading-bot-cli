@@ -37,10 +37,11 @@ function parseProbabilities(raw: string | undefined): Record<string, number> | u
   const map: Record<string, number> = {};
   for (const pair of raw.split(',')) {
     const [tickerRaw, probRaw] = pair.split(':');
-    if (!tickerRaw || !probRaw) continue;
+    const ticker = tickerRaw?.trim().toUpperCase();
+    if (!ticker || !probRaw) continue;
     const p = Number(probRaw);
-    if (!Number.isFinite(p)) continue;
-    map[tickerRaw.trim().toUpperCase()] = p;
+    if (!Number.isFinite(p) || p < 0 || p > 1) continue;
+    map[ticker] = p;
   }
   return Object.keys(map).length > 0 ? map : undefined;
 }
@@ -50,10 +51,11 @@ function parseLegs(raw: string | undefined, sideDefault: 'yes' | 'no'): { market
   const legs: { market_ticker: string; side: 'yes' | 'no'; model_probability: number }[] = [];
   for (const pair of raw.split(',')) {
     const [tickerRaw, probRaw] = pair.split(':');
-    if (!tickerRaw || !probRaw) continue;
+    const ticker = tickerRaw?.trim().toUpperCase();
+    if (!ticker || !probRaw) continue;
     const p = Number(probRaw);
-    if (!Number.isFinite(p)) continue;
-    legs.push({ market_ticker: tickerRaw.trim().toUpperCase(), side: sideDefault, model_probability: p });
+    if (!Number.isFinite(p) || p < 0 || p > 1) continue;
+    legs.push({ market_ticker: ticker, side: sideDefault, model_probability: p });
   }
   return legs;
 }

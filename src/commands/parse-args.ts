@@ -267,7 +267,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       const raw = argv[++i];
       if (raw != null) {
         const numeric = Number(raw);
-        if (Number.isFinite(numeric) && numeric > 0) { topK = numeric; }
+        if (Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0) { topK = numeric; }
         else { parseErrors.push(`Invalid --top-k value: "${raw}" (expected a positive integer)`); }
       } else { parseErrors.push('--top-k requires a value'); }
     } else if (arg === '--behavioral') {
@@ -286,7 +286,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       const raw = argv[++i];
       if (raw != null) {
         const numeric = Number(raw);
-        if (Number.isFinite(numeric) && numeric > 0) { windowDays = numeric; }
+        if (Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0) { windowDays = numeric; }
         else { parseErrors.push(`Invalid --window-days value: "${raw}" (expected a positive integer)`); }
       } else { parseErrors.push('--window-days requires a value'); }
     } else if (arg === '--correlation-interval') {
@@ -325,14 +325,14 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       const raw = argv[++i];
       if (raw != null) {
         const numeric = Number(raw);
-        if (Number.isFinite(numeric) && numeric > 0) { n = numeric; }
+        if (Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0) { n = numeric; }
         else { parseErrors.push(`Invalid -n value: "${raw}" (expected a positive integer)`); }
       } else { parseErrors.push('-n requires a value'); }
     } else if (arg === '--max-per-cluster') {
       const raw = argv[++i];
       if (raw != null) {
         const numeric = Number(raw);
-        if (Number.isFinite(numeric) && numeric > 0) { maxPerCluster = numeric; }
+        if (Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0) { maxPerCluster = numeric; }
         else { parseErrors.push(`Invalid --max-per-cluster value: "${raw}" (expected a positive integer)`); }
       } else { parseErrors.push('--max-per-cluster requires a value'); }
     } else if (arg === '--max-corr') {
@@ -357,7 +357,24 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       if (val != null) { seriesPrefix = val.toUpperCase(); } else { parseErrors.push('--series-prefix requires a value'); }
     } else if (arg === '--sort-by') {
       const val = argv[++i];
-      if (val != null) { sortBy = val; } else { parseErrors.push('--sort-by requires a value'); }
+      if (val == null) {
+        parseErrors.push('--sort-by requires a value');
+      } else {
+        // Union across both consumers (search edge + search). Each consumer
+        // additionally filters to its own subset; this guards against typos at
+        // the CLI surface so invalid values don't silently fall through to defaults.
+        const VALID_SORT_BY = new Set([
+          // search edge (markets-with-edge)
+          'edge_pp', 'expected_return', 'total_volume', 'model_probability',
+          // search (markets)
+          'volume_24h', 'close_time', 'last_price',
+        ]);
+        if (VALID_SORT_BY.has(val)) {
+          sortBy = val;
+        } else {
+          parseErrors.push(`Invalid --sort-by value: "${val}" (expected one of ${Array.from(VALID_SORT_BY).join(', ')})`);
+        }
+      }
     } else if (arg === '--probs') {
       const val = argv[++i];
       if (val != null) { probabilities = val; } else { parseErrors.push('--probs requires a value (e.g., --probs KXBTC-...:0.62,KXETH-...:0.58)'); }

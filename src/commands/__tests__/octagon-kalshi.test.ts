@@ -464,6 +464,44 @@ describe('Octagon Kalshi commands', () => {
     expect(calledUrl).toContain('sort_by=volume_24h');
   });
 
+  test('parseProbabilities rejects empty tickers and out-of-range probs', async () => {
+    const { handleBasket } = await import('../basket.js');
+    let sizeBody: any;
+    installFetchMock(async (url, init) => {
+      if (url.includes('/baskets/size')) {
+        sizeBody = JSON.parse((init?.body as string) ?? '{}');
+        return jsonResponse({ bankroll_usd: 1000, kelly_multiplier: 0.25, total_notional: 0, legs: [] });
+      }
+      return jsonResponse({});
+    });
+    // Inputs: " :0.5" (empty trimmed ticker), "KX-A:1.5" (>1), "KX-B:-0.1" (<0), "KX-C:0.7" (valid)
+    const resp = await handleBasket(makeArgs({
+      subcommand: 'basket', positionalArgs: ['size'],
+      bankroll: 1000, probabilities: ' :0.5,KX-A:1.5,KX-B:-0.1,KX-C:0.7',
+    }));
+    expect(resp.ok).toBe(true);
+    // Only KX-C survived validation
+    expect(sizeBody.legs).toHaveLength(1);
+    expect(sizeBody.legs[0].market_ticker).toBe('KX-C');
+    expect(sizeBody.legs[0].model_probability).toBe(0.7);
+  });
+
+  test('formatMarketsWithEdgeHuman guards against invalid captured_at', async () => {
+    const { formatMarketsWithEdgeHuman } = await import('../search-remote.js');
+    // Should not throw when captured_at is invalid garbage.
+    const out = formatMarketsWithEdgeHuman({
+      run_id: '12345678-aaaa', captured_at: 'not-a-date', sort_by: 'edge_pp',
+      data: [], next_cursor: null, has_more: false,
+    } as any, 5);
+    expect(out).toContain('captured unknown');
+    // Should also handle null
+    const out2 = formatMarketsWithEdgeHuman({
+      run_id: '12345678-aaaa', captured_at: null, sort_by: 'edge_pp',
+      data: [], next_cursor: null, has_more: false,
+    } as any, 5);
+    expect(out2).toContain('captured unknown');
+  });
+
   test('Octagon API: 502 surfaces as wrapped error', async () => {
     installFetchMock(() => new Response(JSON.stringify({ detail: 'upstream embedding failed' }), { status: 502 }));
     const resp = await handleSimilar(makeArgs({ subcommand: 'similar', query: 'foo' }));

@@ -52,7 +52,14 @@ export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiM
 
 export function formatMarketsWithEdgeHuman(data: MarketsWithEdgeResponse, minEdgePp: number): string {
   const lines: string[] = [];
-  const captured = data.captured_at ? new Date(data.captured_at).toISOString().slice(0, 16).replace('T', ' ') : 'unknown';
+  // Guard against invalid date strings — new Date('garbage').toISOString() throws RangeError.
+  let captured = 'unknown';
+  if (data.captured_at) {
+    const d = new Date(data.captured_at);
+    if (!Number.isNaN(d.getTime())) {
+      captured = d.toISOString().slice(0, 16).replace('T', ' ');
+    }
+  }
   lines.push(`Octagon Edge Scanner (server-side) — run ${data.run_id.slice(0, 8)}, captured ${captured} UTC, sort by ${data.sort_by}`);
   lines.push('════════════════════════════════════════════════════════');
   lines.push('');
