@@ -6,6 +6,7 @@ import {
   backtestBasket,
   getBasketSize,
   getBasketCandles,
+  searchKalshiMarkets,
   type BasketBuildResponse,
   type BasketBacktestResponse,
   type BasketSizeResponse,
@@ -15,6 +16,8 @@ import {
   type BasketCandlesBody,
 } from '../scan/octagon-kalshi-api.js';
 import { formatTable } from './scan-formatters.js';
+import { getDb } from '../db/index.js';
+import { getEditorialTheme } from '../db/editorial-themes.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
@@ -64,6 +67,43 @@ function collectTickers(args: ParsedArgs): string[] {
     if (upper) set.add(upper);
   }
   return Array.from(set);
+}
+
+/**
+ * Resolve an editorial theme name to a flat list of market tickers: for each
+ * series in the theme, pull the live universe, filter by market_ticker prefix
+ * (Octagon's series_ticker field is currently null), and pick the top market
+ * by 24h volume. Limit total candidates with --top-k.
+ */
+async function tickersFromTheme(themeName: string, topPerSeries: number, maxTotal: number): Promise<string[]> {
+  const db = getDb();
+  const theme = getEditorialTheme(db, themeName);
+  if (!theme) throw new Error(`No editorial theme named "${themeName}". Try \`themes list\` or \`themes import\`.`);
+  if (theme.series.length === 0) throw new Error(`Theme "${themeName}" has no mapped series.`);
+  // Pull the universe once and bucket by series prefix.
+  const universe = await searchKalshiMarkets({ limit: 200 });
+  const all = [...universe.data];
+  let cursor = universe.next_cursor;
+  let pages = 1;
+  while (cursor && universe.has_more && pages < 25) {
+    const page = await searchKalshiMarkets({ limit: 200, cursor });
+    all.push(...page.data);
+    if (!page.has_more || !page.next_cursor) break;
+    cursor = page.next_cursor;
+    pages += 1;
+  }
+  const out: string[] = [];
+  for (const seriesTicker of theme.series) {
+    const prefix = seriesTicker.toUpperCase() + '-';
+    const sub = all
+      .filter((m) => m.market_ticker.toUpperCase().startsWith(prefix))
+      .sort((a, b) => (b.volume_24h ?? 0) - (a.volume_24h ?? 0))
+      .slice(0, topPerSeries)
+      .map((m) => m.market_ticker);
+    out.push(...sub);
+    if (out.length >= maxTotal) break;
+  }
+  return out.slice(0, maxTotal);
 }
 
 // ─── build ──────────────────────────────────────────────────────────────────
@@ -157,9 +197,20 @@ export function formatBasketBuildHuman(data: BasketBuildResponse): string {
 // ─── backtest ───────────────────────────────────────────────────────────────
 
 export async function handleBasketBacktest(args: ParsedArgs): Promise<CLIResponse<BasketBacktestResponse>> {
-  const tickers = collectTickers(args);
+  let tickers = collectTickers(args);
+  // --theme <name>: resolve registry to top market per series, equal-weight basket.
+  if (args.theme && tickers.length === 0) {
+    try {
+      tickers = await tickersFromTheme(args.theme, args.topK ?? 1, 50);
+    } catch (err) {
+      return wrapError('basket', 'THEME_RESOLVE', err instanceof Error ? err.message : String(err));
+    }
+    if (tickers.length === 0) {
+      return wrapError('basket', 'THEME_EMPTY', `Theme "${args.theme}" resolved to 0 tradeable markets.`);
+    }
+  }
   if (tickers.length < 1) {
-    return wrapError('basket', 'MISSING_TICKERS', 'Usage: basket backtest --tickers KX-A,KX-B [--weights 0.6,0.4] [--timeframe 1y]');
+    return wrapError('basket', 'MISSING_TICKERS', 'Usage: basket backtest --tickers KX-A,KX-B [--weights 0.6,0.4] [--timeframe 1y]  OR  basket backtest --theme "Iran Escalation"');
   }
   if (args.weights && args.weights.length !== tickers.length) {
     return wrapError('basket', 'WEIGHTS_MISMATCH', `Got ${tickers.length} tickers but ${args.weights.length} weights.`);
@@ -203,9 +254,19 @@ export function formatBasketBacktestHuman(data: BasketBacktestResponse): string 
 // ─── candles ────────────────────────────────────────────────────────────────
 
 export async function handleBasketCandles(args: ParsedArgs): Promise<CLIResponse<BasketCandlesResponse>> {
-  const tickers = collectTickers(args);
+  let tickers = collectTickers(args);
+  if (args.theme && tickers.length === 0) {
+    try {
+      tickers = await tickersFromTheme(args.theme, args.topK ?? 1, 50);
+    } catch (err) {
+      return wrapError('basket', 'THEME_RESOLVE', err instanceof Error ? err.message : String(err));
+    }
+    if (tickers.length === 0) {
+      return wrapError('basket', 'THEME_EMPTY', `Theme "${args.theme}" resolved to 0 tradeable markets.`);
+    }
+  }
   if (tickers.length < 1) {
-    return wrapError('basket', 'MISSING_TICKERS', 'Usage: basket candles --tickers KX-A,KX-B [--weights 0.6,0.4] [--timeframe 1y]');
+    return wrapError('basket', 'MISSING_TICKERS', 'Usage: basket candles --tickers KX-A,KX-B [--weights 0.6,0.4]  OR  basket candles --theme "Iran Escalation"');
   }
   if (args.weights && args.weights.length !== tickers.length) {
     return wrapError('basket', 'WEIGHTS_MISMATCH', `Got ${tickers.length} tickers but ${args.weights.length} weights.`);

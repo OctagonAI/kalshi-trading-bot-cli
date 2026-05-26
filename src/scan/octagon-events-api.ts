@@ -49,6 +49,61 @@ const PAGE_LIMIT = 200;
 const TIMEOUT_MS = 60_000;
 
 /**
+ * Fetch a single page of events with optional filters. Useful for CLI commands
+ * that don't need the full universe — e.g. `events list --limit 50`.
+ */
+export async function fetchOctagonEventsPage(opts?: {
+  limit?: number;
+  cursor?: string | null;
+  hasHistory?: boolean;
+}): Promise<{ data: OctagonEventEntry[]; next_cursor: string | null; has_more: boolean }> {
+  const apiKey = process.env.OCTAGON_API_KEY;
+  if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
+
+  const params = new URLSearchParams({ limit: String(opts?.limit ?? PAGE_LIMIT) });
+  if (opts?.hasHistory) params.set('has_history', 'true');
+  if (opts?.cursor) params.set('cursor', opts.cursor);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Octagon events API ${resp.status}: ${body.slice(0, 200)}`);
+  }
+  const page = (await resp.json()) as { data?: OctagonEventEntry[]; next_cursor?: string | null; has_more?: boolean };
+  return {
+    data: Array.isArray(page.data) ? page.data : [],
+    next_cursor: page.next_cursor ?? null,
+    has_more: !!page.has_more,
+  };
+}
+
+/**
+ * Look up a single event by ticker. Scans pages until found (universe is small).
+ * Returns null if not found.
+ */
+export async function fetchOctagonEventByTicker(eventTicker: string): Promise<OctagonEventEntry | null> {
+  let cursor: string | null = null;
+  do {
+    const page: { data: OctagonEventEntry[]; next_cursor: string | null; has_more: boolean } =
+      await fetchOctagonEventsPage({ cursor });
+    const hit = page.data.find((e) => e.event_ticker === eventTicker);
+    if (hit) return hit;
+    cursor = page.has_more ? page.next_cursor : null;
+  } while (cursor);
+  return null;
+}
+
+/**
  * Fetch all events from the Octagon Prediction Markets Events API,
  * paginating through all pages.
  * @param opts.hasHistory - When true, only return events with multiple historical snapshots.

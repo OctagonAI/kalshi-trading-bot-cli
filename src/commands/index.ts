@@ -18,6 +18,7 @@ function defaultArgs(overrides: Partial<ParsedArgs>): ParsedArgs {
     verbose: false, performance: false, resolved: false,
     unresolved: false,
     behavioral: false, ranked: false, showCluster: false,
+    activeOnly: false,
     parseErrors: [],
     ...overrides,
   };
@@ -35,6 +36,10 @@ import { handleClusters, formatClustersHuman } from './clusters.js';
 import { handlePeers, formatPeersHuman } from './peers.js';
 import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
+import { handleEvents, formatEventsHuman } from './events.js';
+import { handleSeries, formatSeriesHuman } from './series.js';
+import { handleEditorialThemes, formatEditorialThemesHuman } from './editorial-themes.js';
+import { handleCatalysts, formatCatalystsHuman } from './catalysts.js';
 
 export interface CommandResult {
   output: string;
@@ -108,11 +113,24 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
     case 'cancel':
       return handleCancel(args[0]);
 
-    // ─── /search themes (inline) ─────────────────────────────────────
-    // Note: /search <non-themes> is handled in cli.ts via browseController
+    // ─── /themes (editorial registry) ────────────────────────────────
+    // The bare /themes call now hits the editorial-themes registry. Legacy
+    // "Kalshi category labels" is still reachable via /search themes.
     case 'themes': {
-      const resp = await handleThemes(defaultArgs({ subcommand: 'themes' }));
-      return { output: formatThemesHuman(resp.data) };
+      const parsed = parseArgs(['themes', ...args]);
+      const sub = parsed.positionalArgs[0]?.toLowerCase();
+      const isAsync = sub === 'report' || sub === 'audit';
+      if (!isAsync) {
+        const resp = await handleEditorialThemes(parsed);
+        return { output: resp.ok ? formatEditorialThemesHuman(resp.data) : (resp.error?.message ?? 'themes failed') };
+      }
+      return {
+        output: `Building themes ${sub} (this pulls the full Kalshi universe)...`,
+        asyncFollowUp: async () => {
+          const resp = await handleEditorialThemes(parsed);
+          return resp.ok ? formatEditorialThemesHuman(resp.data) : (resp.error?.message ?? 'themes failed');
+        },
+      };
     }
 
     // ─── /analyze ────────────────────────────────────────────────────
@@ -204,6 +222,37 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
         asyncFollowUp: async () => {
           const resp = await handleBasket(parsed);
           return resp.ok ? formatBasketHuman(resp.data) : (resp.error?.message ?? 'basket failed');
+        },
+      };
+    }
+    case 'events': {
+      const parsed = parseArgs(['events', ...args]);
+      return {
+        output: 'Querying Octagon events...',
+        asyncFollowUp: async () => {
+          const resp = await handleEvents(parsed);
+          return resp.ok ? formatEventsHuman(resp.data) : (resp.error?.message ?? 'events failed');
+        },
+      };
+    }
+    case 'series': {
+      const parsed = parseArgs(['series', ...args]);
+      const sub = parsed.positionalArgs[0]?.toLowerCase();
+      return {
+        output: sub === 'candles' ? 'Building series NAV...' : 'Rolling up Kalshi series...',
+        asyncFollowUp: async () => {
+          const resp = await handleSeries(parsed);
+          return resp.ok ? formatSeriesHuman(resp.data) : (resp.error?.message ?? 'series failed');
+        },
+      };
+    }
+    case 'catalysts': {
+      const parsed = parseArgs(['catalysts', ...args]);
+      return {
+        output: 'Loading upcoming catalysts...',
+        asyncFollowUp: async () => {
+          const resp = await handleCatalysts(parsed);
+          return resp.ok ? formatCatalystsHuman(resp.data) : (resp.error?.message ?? 'catalysts failed');
         },
       };
     }

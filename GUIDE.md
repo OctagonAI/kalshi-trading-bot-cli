@@ -102,8 +102,17 @@ Quick commands that bypass the AI agent and call the Kalshi or Octagon API direc
 | `/correlate <t1> <t2> [...]` | Pairwise correlation matrix | `/correlate KX-A KX-B KX-C --window-days 90` |
 | `/basket build` | Diversified basket (cluster + correlation caps) | `/basket build --category crypto -n 8 --max-corr 0.6` |
 | `/basket backtest` | Total return / Sharpe / max DD on a basket | `/basket backtest --tickers KX-A,KX-B --timeframe 1y` |
+| `/basket backtest --theme <name>` | Backtest an editorial theme NAV | `/basket backtest --theme "Iran Escalation"` |
 | `/basket size` | Fractional Kelly sizing for picked legs | `/basket size --bankroll 1000 --kelly 0.25 --probs KX-A:0.62` |
 | `/basket candles` | OHLC bars for a weighted basket NAV | `/basket candles --tickers KX-A,KX-B --timeframe 6m` |
+| `/events` / `/events <ticker>` | Octagon events + outcome ladder | `/events KXFEDCHAIRNOM-29` |
+| `/series` / `/series <ticker>` | Kalshi series rollup | `/series KXBTCD` |
+| `/series candles <ticker>` | Series-level NAV | `/series candles KXBTCD --timeframe 3m` |
+| `/catalysts upcoming` | Markets closing soon, grouped by week | `/catalysts upcoming --days 14` |
+| `/themes` (registry) | Editorial narrative buckets | `/themes show "Iran Escalation"` |
+| `/themes report` | 25-theme dashboard with SEO + liquidity | `/themes report` |
+| `/themes audit` | Flag dead themes (high SEO + zero volume) | `/themes audit` |
+| `/themes overlap` | Cross-theme dedupe report | `/themes overlap` |
 | `/buy <ticker> <count> [price]` | Buy YES contracts (price in cents) | `/buy KXBTC-26MAR-B80000 5 56` |
 | `/sell <ticker> <count> [price]` | Sell YES contracts | `/sell KXBTC-26MAR-B80000 5 60` |
 | `/cancel <order_id>` | Cancel a resting order | `/cancel abc-123-def` |
@@ -206,6 +215,91 @@ kalshi basket size --bankroll 1000 --kelly 0.25 \
 ```
 
 The server looks up live `yes_bid`/`no_bid` for each leg to compute edge and Kelly fraction. Legs with no edge (`prob < price`) get `kelly_fraction = 0`.
+
+### Editorial Themes — narrative registry
+
+Editorial themes are user-curated narrative buckets (e.g. "AI Race Milestones", "Iran Escalation") that map to lists of Kalshi series. Distinct from Octagon's ML clusters — these are *narratives* you define. The bot ships with a 25-theme seed dataset at `data/themes_seo.json` derived from monthly search-demand research.
+
+```bash
+# Seed the registry from the included starter file (25 themes, ~170 series)
+kalshi themes import
+kalshi themes list
+
+# Drill into one
+kalshi themes show "Iran Escalation"
+#  Description    Hormuz traffic, US-Iran nuclear deal, oil & gas price ladders
+#  Search volume  1.1M/month
+#  Series         12 mapped
+#  KXAAAGASD, KXAAAGASM, KXAAAGASMAX, KXBRENTW, KXHORMUZNORM, KXUSAIRANAGREEMENT, ...
+
+# THE dashboard view — 25-theme grid with SEO + liquidity
+kalshi themes report
+
+# Identify dead themes (high SEO but no Kalshi inventory)
+kalshi themes audit
+#   Status keys:
+#     STALE         — high SEO, all series exist but 0 active markets
+#     NO_INVENTORY  — high SEO, no series mapped at all
+#     THIN          — active markets but <$1000/day volume
+#     TRADEABLE     — ready to act on
+
+# Cross-theme dedupe — same series in two themes
+kalshi themes overlap
+#   KXUSAIRANAGREEMENT  Iran Escalation · Nuclear Renaissance
+#   KXMORTGAGERATE      Fed Cuts Aggressively · Housing / Mortgage Crisis
+```
+
+#### Build your own themes
+
+```bash
+kalshi themes create "My Macro Hedge" --label "Recession + inflation tail" --tickers KXRECSSNBER,KXCPIYOY
+kalshi themes add-series "My Macro Hedge" KXFEDDECISION,KXU3,KXMORTGAGERATE
+kalshi themes set-search-volume "My Macro Hedge" 50000
+kalshi themes export ~/my-themes.json    # version-control or share
+kalshi themes import ~/my-themes.json    # restore on another machine
+kalshi themes delete "My Macro Hedge"
+```
+
+#### Compose with baskets
+
+```bash
+# Backtest the entire theme as an equal-weight NAV (top market per series)
+kalshi basket backtest --theme "Iran Escalation" --timeframe 3m
+
+# OHLC bars for theme momentum
+kalshi basket candles --theme "Fed Cuts Aggressively" --timeframe 1y --json
+```
+
+### Series rollups
+
+`series` aggregates Octagon's market-level data to the series level — the canonical Kalshi grouping above individual markets.
+
+```bash
+kalshi series                              # all liquid series, sorted by 24h vol
+kalshi series list --min-volume 10000      # liquidity filter
+kalshi series KXBTCD                       # sub-markets in one series
+kalshi series search bitcoin               # keyword → rollup
+kalshi series candles KXBTCD --timeframe 3m   # series NAV = basket of top sub-markets
+```
+
+### Events — outcome ladders
+
+`events` exposes Octagon's event-level rollups, where each event is a multi-market Kalshi question (e.g. "Who will Trump nominate as Fed Chair?") with per-outcome model probabilities.
+
+```bash
+kalshi events --category Politics --limit 10
+kalshi events KXFEDCHAIRNOM-29     # outcome ladder with per-contract edge
+```
+
+### Catalyst calendar
+
+```bash
+kalshi catalysts upcoming                              # next 30 days
+kalshi catalysts upcoming --days 7 --min-volume 5000   # liquid markets, next week
+kalshi catalysts upcoming --category Politics
+```
+
+Groups markets by ISO week of `close_time` so you can see catalyst clustering and position before risk concentration.
 
 ---
 

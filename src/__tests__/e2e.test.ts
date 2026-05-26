@@ -59,6 +59,7 @@ function makeParsedArgs(overrides: Partial<ParsedArgs>): ParsedArgs {
     behavioral: false,
     ranked: false,
     showCluster: false,
+    activeOnly: false,
     parseErrors: [],
     ...overrides,
   };

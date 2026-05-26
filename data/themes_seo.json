@@ -1,0 +1,159 @@
+{
+  "_meta": {
+    "description": "Curated editorial themes for Kalshi prediction markets, ranked by Google search demand. Each theme maps to a list of Kalshi series tickers and carries a monthly search-volume estimate. Use `kalshi themes import data/themes_seo.json` to load. Volumes are point-in-time estimates; refresh quarterly.",
+    "version": "1.0",
+    "as_of": "2026-05-25"
+  },
+  "themes": [
+    {
+      "name": "AI Race Milestones",
+      "description": "Frontier model releases, AI infrastructure, training-compute and AGI predictions",
+      "search_volume": 138300000,
+      "series": ["KXLLM1", "KXIPOOPENAI", "KXAIREVIEW", "KXOAIANTH", "KXTECHRANKLISTAICODE", "KXH200CHINA", "KXGPT", "KXCLAUDE", "KXCODINGMODEL", "KXOAIHARDWARE", "KXCHAICUTS", "KXTOPAI", "KXBESTLLMCHINA"]
+    },
+    {
+      "name": "Elon Musk / Tesla / SpaceX",
+      "description": "Musk-empire markets: SpaceX IPO, Starship cadence, Tesla KPIs, Neuralink, wealth",
+      "search_volume": 8400000,
+      "series": ["KXIPOSPACEX", "KXSPACEXCOUNT", "KXSPACEXSTARSHIP", "KXMUSKWEALTH", "KXMUSKTRILLION", "KXTSLA", "KXIPOSTARLINK", "KXNEURALINKCOUNT", "KXTESLACAR", "KXSTARSHIPMARS", "KXSTARSHIPDOCK", "KXBLUESPACEX"]
+    },
+    {
+      "name": "Epstein / Celebrity Trials",
+      "description": "Massive SEO demand but thin Kalshi inventory — flag as STALE",
+      "search_volume": 4280000,
+      "series": ["KXEPSTEINLIST", "KXRELEASEMAXWELL", "KXEPSTEIN"]
+    },
+    {
+      "name": "Government Dysfunction",
+      "description": "House Speaker fights, filibuster reform, government shutdowns",
+      "search_volume": 3730000,
+      "series": ["KXNEXTSPEAKER", "KXFBUSTER", "KXNUMSHUTDOWNS"]
+    },
+    {
+      "name": "FDA / Pharma Approvals",
+      "description": "Drug approvals, psychedelic milestones, FDA commissioner pick",
+      "search_volume": 3070000,
+      "series": ["KXFDAAPPROVALPSYCHEDELIC", "KXFDANOM", "KXFDAAPPROVE", "KXFDARETATRUTIDE", "KXFDAANNOUNCE", "KXFDAAPPROVALDATECMPS", "KXFDAAPPROVALDATENTLA"]
+    },
+    {
+      "name": "Iran Escalation",
+      "description": "Hormuz traffic, US-Iran nuclear deal, oil & gas price ladders",
+      "search_volume": 1140000,
+      "series": ["KXHORMUZNORM", "KXUSAIRANAGREEMENT", "KXAAAGASM", "KXWTIW", "KXAAAGASW", "KXWTI", "KXAAAGASD", "KXBRENTW", "KXHORMUZWEEKLY", "KXBRENTMON", "KXWTIMINM", "KXAAAGASMAX"]
+    },
+    {
+      "name": "Gaza War Wraps",
+      "description": "Israel rate decisions, Netanyahu / next PM, post-war politics",
+      "search_volume": 1090000,
+      "series": ["KXCBDISRAEL", "KXNETANYAHUPARDON", "KXNEXTISRAELPM", "KXISRAELPM", "KXISLGAME", "KXKANYEISRAEL"]
+    },
+    {
+      "name": "Trump Survives Politically",
+      "description": "Approval ratings, midterm dynamics, 25th Amendment / impeachment",
+      "search_volume": 505000,
+      "series": ["KXVOTEHUBTRUMPUPDOWN", "KXMIDTERMMOV", "KXMIDTERMVOTETURN", "KXRUNBYMIDTERM", "KXTRUMPREMOVE", "KXMOCTRUMP25", "KXAMEND25", "KXLEAVEDUNN", "KXLEAVEMILLS"]
+    },
+    {
+      "name": "RFK Jr Changes Health",
+      "description": "Huge SEO but zero active Kalshi inventory — AVOID",
+      "search_volume": 422000,
+      "series": []
+    },
+    {
+      "name": "Nuclear Renaissance",
+      "description": "Reactor licenses, criticality milestones, data-center nuclear, fusion",
+      "search_volume": 382000,
+      "series": ["KXUSAIRANAGREEMENT", "KXCRITICALITY", "KXREACTOR", "KXDATACENTER", "KXFUSION"]
+    },
+    {
+      "name": "Fed Cuts Aggressively",
+      "description": "Fed meeting decisions, CPI prints, rate-cut paths, mortgage rates",
+      "search_volume": 340000,
+      "series": ["KXFEDDECISION", "KXFEDHIKE", "KXFED", "KXCPIYOY", "KXMORTGAGERATE", "KXCPI", "KXECONSTATCPIYOY", "KXLCPIMAXYOY", "KXCBDISRAEL", "KXRATECUT", "KXFOMCDISSENTCOUNT", "KXUKCPIYOY"]
+    },
+    {
+      "name": "SCOTUS Rulings",
+      "description": "Birthright citizenship, trans sports ban, tariff cases, justice changes",
+      "search_volume": 334000,
+      "series": ["KX14AMENDCASE", "KXWATSONRNC", "KXSCOTUSRESIGN", "KXTRANSGENDERSPORTSBAN", "KXTRUMPTARIFFHEAR", "KXSCOTUSN", "KXTRUMPSLAUGHTERVOTE", "KXTRUMPVSLAUGHTER", "KXSCOTUSCERT3RD", "KXSCOTUSMARIJUANAGUN"]
+    },
+    {
+      "name": "Housing / Mortgage Crisis",
+      "description": "Mortgage rates, new home sales, hedge-fund housing tax, starts",
+      "search_volume": 291000,
+      "series": ["KXMORTGAGERATE", "KXHFHOUSING", "KXNHSALES", "KXHOUSINGSTART", "KXEHSALES"]
+    },
+    {
+      "name": "US-China Decoupling",
+      "description": "Tariffs, chip export controls, Taiwan posture, PRC PMI",
+      "search_volume": 211000,
+      "series": ["KXTARIFFCHECKS", "KXNEWTARIFFS", "KXH200CHINA", "KXTAIWANLVL4", "KXTARIFFRATEPRC", "KXBEEFTARIFF", "KXTARIFFRATEINDIA", "KXF1CHINA", "KXBESTLLMCHINA", "KXCHNBSPMI", "KXTRUMPTARIFFHEAR", "KXRECOGROC"]
+    },
+    {
+      "name": "TikTok Ban",
+      "description": "Story died — high SEO with zero active inventory. AVOID",
+      "search_volume": 173000,
+      "series": []
+    },
+    {
+      "name": "Immigration Crackdown",
+      "description": "ICE funding, deportations, border encounters",
+      "search_volume": 163000,
+      "series": ["KXICEERO", "KXSWENCOUNTERS", "KXICERENAME", "KXDEPORTATIONS"]
+    },
+    {
+      "name": "Stock Market Crash / S&P",
+      "description": "S&P 500 / NASDAQ ranges, unemployment, NBER recession",
+      "search_volume": 132000,
+      "series": ["KXINXY", "KXINXMAXY", "KXNASDAQ100Y", "KXU3", "KXRECSSNBER", "KXINX", "KXNASDAQ100MAXY", "KXINXVSNDQ100", "KXSP500ADDQ", "KXU3MAX", "KXNASDAQ100POS", "KXUE"]
+    },
+    {
+      "name": "Crypto Regulation",
+      "description": "Single market, low volume — likely STALE",
+      "search_volume": 79000,
+      "series": ["KXCRYPTOCAPGAIN"]
+    },
+    {
+      "name": "Climate / EV Policy Reversal",
+      "description": "Truflation EV, IFO sentiment, climate-goal markets",
+      "search_volume": 60000,
+      "series": ["KXTRUEV", "KXDEIFO", "KXINDIACLIMATE", "KXUSCLIMATE", "KXEVSHARE", "KXEUCLIMATE"]
+    },
+    {
+      "name": "No 2026 Recession",
+      "description": "Unemployment + recession ladders — overlaps Stock Market Crash",
+      "search_volume": 48000,
+      "series": ["KXU3", "KXRECSSNBER", "KXU3MAX", "KXUE", "KXECONSTATU3", "KXNBERRECESSQ", "KXIMFRECESS", "KXBRAZILU"]
+    },
+    {
+      "name": "Russia-Ukraine Ends",
+      "description": "Zelensky/Putin summit, Russia rate decisions, post-war politics",
+      "search_volume": 44000,
+      "series": ["KXZELENSKYPUTIN", "KXCBDECISIONRUSSIA", "KXZELENSKYYOUT", "KXUKRAINEEU", "KXPUTINZELENSKYYLOCATION"]
+    },
+    {
+      "name": "Bitcoin Breakout",
+      "description": "Deepest crypto inventory: BTC/ETH price ladders, one-touch markets",
+      "search_volume": 29000,
+      "series": ["KXBTCD", "KXETHMAXY", "KXBTCY", "KXBTCMAX100", "KXETHD", "KXBTCMAX150", "KXBTCMAXMON", "KXBTCMINMON", "KXBTC", "KXBTCMINY", "KXETH", "KXCRYPTOSTRUCTURE"]
+    },
+    {
+      "name": "Trump Cabinet Shake-up",
+      "description": "Hegseth, McConnell, Trump firings, cabinet exits",
+      "search_volume": 22000,
+      "series": ["KXHEGSETHOUT", "KXCABOUT", "KXRETIREMM", "KXTRUMPRESIGN", "KXSCOTUSRESIGN", "KXTRYFIREPOWELL", "KXTRUMPFIRE", "KXVANCEPAKISTAN", "KXJIMMYKIMMELFIRED", "KXHEGSETHANNOUNCEOUT", "KXIMPEACHCABINET", "KXLEAVECONGRESS"]
+    },
+    {
+      "name": "Putin Out",
+      "description": "Thin inventory — overlaps Russia-Ukraine Ends",
+      "search_volume": 4700,
+      "series": ["KXZELENSKYPUTIN", "KXPUTINZELENSKYYLOCATION"]
+    },
+    {
+      "name": "Weed Rescheduled",
+      "description": "Thin overlap with FDA/SCOTUS themes",
+      "search_volume": 1600,
+      "series": ["KXFDAAPPROVALPSYCHEDELIC", "KXSCOTUSMARIJUANAGUN"]
+    }
+  ]
+}

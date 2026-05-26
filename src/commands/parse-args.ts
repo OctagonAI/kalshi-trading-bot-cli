@@ -9,6 +9,8 @@ const SUBCOMMANDS = [
   'backtest',
   // Octagon Kalshi search/clusters/basket (new)
   'similar', 'clusters', 'peers', 'correlate', 'basket',
+  // Octagon events + Kalshi series rollup + editorial themes registry
+  'events', 'series', 'catalysts',
 ] as const;
 
 export type Subcommand = (typeof SUBCOMMANDS)[number];
@@ -63,6 +65,8 @@ export interface ParsedArgs {
   tickers?: string;
   query?: string;
   showCluster: boolean;
+  aggregateBy?: 'series';
+  activeOnly: boolean;
   parseErrors: string[];
 }
 
@@ -115,6 +119,8 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let tickers: string | undefined;
   let query: string | undefined;
   let showCluster = false;
+  let aggregateBy: 'series' | undefined;
+  let activeOnly = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -350,6 +356,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     } else if (arg === '-q' || arg === '--query') {
       const val = argv[++i];
       if (val != null) { query = val; } else { parseErrors.push(`${arg} requires a value`); }
+    } else if (arg === '--aggregate-by') {
+      const val = argv[++i];
+      if (val === 'series') { aggregateBy = 'series'; }
+      else { parseErrors.push(`Invalid --aggregate-by value: "${val}" (expected "series")`); }
+    } else if (arg === '--active-only') {
+      activeOnly = true;
     } else if (arg.startsWith('--')) {
       parseErrors.push(`Unknown flag: ${arg}`);
     } else {
@@ -378,7 +390,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     limit, exportPath, minVolume, minPrice, maxPrice,
     topK, behavioral, ranked, labelContains, closeBefore, windowDays, correlationInterval, timeframe,
     weights, bankroll, kellyMultiplier, n, maxPerCluster, maxCorrelation, minReturn, seriesTicker,
-    sortBy, probabilities, tickers, query, showCluster,
+    sortBy, probabilities, tickers, query, showCluster, aggregateBy, activeOnly,
     parseErrors,
   };
 }

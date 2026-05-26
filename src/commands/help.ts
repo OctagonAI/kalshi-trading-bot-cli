@@ -26,6 +26,9 @@ Search flags (server-side path):
   --min-volume <n>      Floor on 24h volume
   --close-before <iso>  Only markets closing before
   --limit <n>           Page size (default 30)
+  --sort-by <key>       volume_24h | close_time | last_price (client-side sort)
+  --aggregate-by series Roll up results by series (calls series rollup)
+  --active-only         Drop non-active markets (defensive; the live universe is active by default)
 
 Examples:
   ${p}search crypto
@@ -199,6 +202,89 @@ Flags:
 
 Output ranks pairs ascending by correlation — most-uncorrelated first.`,
 
+    events: `**${p}events** — Octagon event rollups (event ↔ outcome ladder)
+
+${p}events                              List events sorted by total_volume
+${p}events --category Politics          Filter by series_category
+${p}events --min-volume 10000           Volume floor
+${p}events --limit 25                   Page size (default 50)
+${p}events KXFEDCHAIRNOM-29             Drill into one event: outcome probabilities + per-contract edge
+
+Flags:
+  --category <name>     Filter by series_category (case-insensitive substring)
+  --min-volume <n>      Floor on total_volume
+  --limit <n>           Page size (default 50)
+  --json                JSON envelope output
+
+Each event is a multi-market Kalshi question (e.g. "Who will Trump nominate as Fed Chair?")
+with one binary sub-market per outcome (Kevin Warsh, Judy Shelton, ...).
+Octagon supplies a model_probability per outcome so you can rank contracts by edge.`,
+
+    series: `**${p}series** — Series-level rollups over the Kalshi universe
+
+${p}series                          List series with 24h vol, market count, dominant category
+${p}series list --min-volume 10000  Liquidity filter
+${p}series list --category Crypto   Filter by category
+${p}series KXBTCD                   Drill in: all sub-markets sorted by volume
+${p}series search "bitcoin"         Keyword search → rolled up by series
+${p}series candles KXBTCD --timeframe 3m   Series NAV = equal-weight basket of top sub-markets
+
+Flags:
+  --min-volume <n>       Floor on 24h volume per series
+  --category <name>      Filter by category
+  --limit <n>            Page size (default 50)
+  --timeframe <1w|1m|3m|6m|1y>  Candle window (default 1y; for "series candles")
+  --top-k <n>            Sub-markets to include in series NAV basket (default 20)
+  --json                 JSON output
+
+A series is the Kalshi grouping above individual markets — KXBTCD is the BTC
+strike ladder, with hundreds of sub-markets like KXBTCD-26DEC31-T100000.`,
+
+    catalysts: `**${p}catalysts** — Upcoming Kalshi market closes grouped by week
+
+${p}catalysts upcoming                       Next 30 days
+${p}catalysts upcoming --days 7              Next week
+${p}catalysts upcoming --days 14 --min-volume 5000 --category Politics
+${p}catalysts upcoming --limit 10            Up to 10 markets per week shown
+
+Flags:
+  --days <n>           Lookback window (default 30)
+  --min-volume <n>     Floor on 24h volume
+  --category <name>    Filter by category
+  --limit <n>          Top-N markets per week (default 8)
+  --json               JSON output
+
+Use for catalyst-calendar planning: see which weeks have major Kalshi
+resolutions cluster up so you can position before catalyst risk.`,
+
+    themes: `**${p}themes** — Editorial narrative registry (curated theme buckets)
+
+${p}themes                                List registered editorial themes
+${p}themes import                         Seed from data/themes_seo.json (25 starter themes)
+${p}themes import <path>                  Import from a custom JSON file
+${p}themes export <path>                  Export current registry
+${p}themes show "Iran Escalation"         Drill into one theme
+${p}themes create "My Theme" --tickers KXA,KXB --label "..." [--min-volume N]
+${p}themes delete "My Theme"
+${p}themes add-series "My Theme" KXBTCD,KXETHD
+${p}themes remove-series "My Theme" KXBTCD
+${p}themes set-search-volume "My Theme" 100000
+${p}themes report                         Dashboard: 25-theme grid with SEO + liquidity
+${p}themes audit                          Flag dead themes (high SEO + zero volume)
+${p}themes overlap                        Cross-theme dedupe report
+
+Editorial themes are narrative buckets you curate (e.g. "AI Race Milestones",
+"Iran Escalation") — distinct from Octagon's ML clusters. Each theme maps to a
+list of Kalshi series and an optional monthly search-volume estimate.
+
+Flags:
+  --label <desc>        Set description on create
+  --min-volume <n>      Set search_volume on create (poorly named — improve later)
+  --tickers <csv>       Comma-separated series on create
+  --json                JSON output
+
+Legacy: ${p}search themes still lists Kalshi category labels (the pre-registry view).`,
+
     basket: `**${p}basket** — Build, backtest, and size diversified baskets
 
 ${p}basket build [universe filters] [-n N] [--max-per-cluster M] [--max-corr X] [--bankroll $ --kelly K --probs ...]
@@ -227,7 +313,8 @@ Sizing flags (build & size):
   --side <yes|no>               Default leg side for "basket size" (default yes)
 
 Backtest/candles flags:
-  --tickers <csv>               Tickers (required)
+  --tickers <csv>               Tickers (required if --theme is absent)
+  --theme <name>                Resolve from editorial registry (top market per series)
   --weights <csv>               Optional weights, same length as tickers
   --timeframe <1w|1m|3m|6m|1y>  Window/bin size
 
@@ -253,8 +340,9 @@ Quick start:
 
 Discovery:
   search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  search --refresh <query>      Force local index rebuild then search
-  search themes                 List all themes and subcategories
+  search --sort-by volume_24h   Top-N by liquidity
+  search --aggregate-by series  Roll up results to series level
+  search themes                 (Legacy) Kalshi category labels
   search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
   similar <ticker>              Semantic neighbors (embedding distance)
   similar -q "free text"        Semantic search by natural-language query
@@ -263,9 +351,24 @@ Discovery:
   clusters --behavioral         Behavioral clusters (30-day return vectors)
   clusters --ranked             Rank clusters by historical basket return
   peers <ticker>                Find markets in the same cluster
+  events                        Octagon events (event ↔ outcome ladder)
+  events <event_ticker>         Drill into one event's outcome probabilities
+  series                        Series rollup with 24h vol, market count
+  series <SERIES>               Sub-markets in one series
+  series candles <SERIES>       Series NAV (basket of top sub-markets)
+  catalysts upcoming --days 30  Markets closing soon, grouped by week
   watch <ticker>                Live price/orderbook feed
   watch --theme <theme>         Continuous theme scan (Ctrl+C to stop)
   watch --refresh               Force index rebuild before watching
+
+Editorial themes (narrative registry):
+  themes                        List registered editorial themes
+  themes import                 Seed from data/themes_seo.json (25 starter themes)
+  themes show <name>            Drill into one theme
+  themes report                 25-theme dashboard with SEO + liquidity
+  themes audit                  Flag dead themes (high SEO + zero volume)
+  themes overlap                Cross-theme dedupe report
+  themes create/delete/add-series/remove-series/set-search-volume/export
 
 Portfolio construction:
   correlate <t1> <t2> [...]     Pairwise Pearson correlation matrix
@@ -313,8 +416,9 @@ Quick start:
 
 Discovery:
   /search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  /search --refresh <query>      Force local index rebuild then search
-  /search themes                 List all themes and subcategories
+  /search --sort-by volume_24h   Top-N by liquidity
+  /search --aggregate-by series  Roll up results to series level
+  /search themes                 (Legacy) Kalshi category labels
   /search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
   /similar <ticker>              Semantic neighbors (embedding distance)
   /similar -q "free text"        Semantic search by natural-language query
@@ -323,9 +427,24 @@ Discovery:
   /clusters --behavioral         Behavioral clusters (30-day return vectors)
   /clusters --ranked             Rank clusters by historical basket return
   /peers <ticker>                Find markets in the same cluster
+  /events                        Octagon events (event ↔ outcome ladder)
+  /events <event_ticker>         Drill into one event's outcome probabilities
+  /series                        Series rollup with 24h vol, market count
+  /series <SERIES>               Sub-markets in one series
+  /series candles <SERIES>       Series NAV (basket of top sub-markets)
+  /catalysts upcoming --days 30  Markets closing soon, grouped by week
   /watch <ticker>                Live price/orderbook feed
   /watch --theme <theme>         Continuous theme scan (Esc to stop)
   /watch --refresh               Force index rebuild before watching
+
+Editorial themes (narrative registry):
+  /themes                        List registered editorial themes
+  /themes import                 Seed from data/themes_seo.json (25 starter themes)
+  /themes show <name>            Drill into one theme
+  /themes report                 25-theme dashboard with SEO + liquidity
+  /themes audit                  Flag dead themes (high SEO + zero volume)
+  /themes overlap                Cross-theme dedupe report
+  /themes create/delete/add-series/remove-series/set-search-volume/export
 
 Portfolio construction:
   /correlate <t1> <t2> [...]     Pairwise Pearson correlation matrix

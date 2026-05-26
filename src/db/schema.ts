@@ -181,6 +181,24 @@ export function migrate(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_history_event
       ON octagon_history(event_ticker, captured_at);
+
+    CREATE TABLE IF NOT EXISTS editorial_themes (
+      name           TEXT PRIMARY KEY,
+      description    TEXT,
+      search_volume  INTEGER,
+      created_at     INTEGER NOT NULL,
+      updated_at     INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS editorial_theme_series (
+      theme_name     TEXT NOT NULL,
+      series_ticker  TEXT NOT NULL,
+      PRIMARY KEY (theme_name, series_ticker),
+      FOREIGN KEY (theme_name) REFERENCES editorial_themes(name) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ets_series
+      ON editorial_theme_series(series_ticker);
   `);
 
   // Schema migrations for columns added after initial release

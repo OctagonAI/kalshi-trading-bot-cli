@@ -359,6 +359,10 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       { value: 'peers', label: 'peers', description: 'Cluster peers for a ticker' },
       { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
       { value: 'basket', label: 'basket', description: 'Build / backtest / size baskets' },
+      { value: 'events', label: 'events', description: 'Octagon events (event ↔ outcome ladder)' },
+      { value: 'series', label: 'series', description: 'Series rollup / NAV' },
+      { value: 'catalysts', label: 'catalysts', description: 'Upcoming market closes by week' },
+      { value: 'themes', label: 'themes', description: 'Editorial narrative registry + dashboard' },
       { value: 'portfolio', label: 'portfolio', description: 'Account state' },
       { value: 'analyze', label: 'analyze', description: 'Market analysis' },
       { value: 'watch', label: 'watch', description: 'Live monitoring' },
@@ -424,6 +428,43 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     }},
     { name: 'peers', description: 'Find markets in the same cluster as a ticker', getArgumentCompletions: usageHint('<ticker> [--behavioral] [--limit N] [--show-cluster]', 'e.g. KXBTCD-26DEC31-T100000 --limit 20') },
     { name: 'correlate', description: 'Pairwise correlation matrix (2-100 tickers)', getArgumentCompletions: usageHint('<ticker1> <ticker2> [...] [--window-days N]', 'e.g. KXA KXB KXC --window-days 90') },
+    { name: 'events', description: 'Octagon events — outcome ladder per event', getArgumentCompletions: usageHint('<event_ticker> | --category Politics | --min-volume 10000', 'e.g. KXFEDCHAIRNOM-29 to drill in') },
+    { name: 'series', description: 'Kalshi series rollup (24h vol, market count)', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: '<series_ticker>', label: '<series_ticker>', description: 'Drill into one series (e.g. KXBTCD)' },
+        { value: 'search <query>', label: 'search <query>', description: 'Keyword search rolled up by series' },
+        { value: 'candles <series_ticker> --timeframe 3m', label: 'candles <SERIES>', description: 'Series NAV basket' },
+        { value: '--min-volume 10000', label: '--min-volume 10000', description: 'Liquidity floor' },
+        { value: '--category Crypto', label: '--category Crypto', description: 'Filter by category' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
+    }},
+    { name: 'catalysts', description: 'Upcoming market closes grouped by week', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: 'upcoming', label: 'upcoming', description: 'Next 30 days (default)' },
+        { value: 'upcoming --days 7', label: '--days 7', description: 'Next week' },
+        { value: 'upcoming --days 14 --min-volume 5000', label: '--days 14 --min-volume 5000', description: 'Two weeks, liquid only' },
+        { value: 'upcoming --category Politics', label: '--category Politics', description: 'By category' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
+    }},
+    { name: 'themes', description: 'Editorial themes registry: import, report, audit, overlap', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: 'list', label: 'list', description: 'List registered themes' },
+        { value: 'import', label: 'import', description: 'Seed from data/themes_seo.json' },
+        { value: 'report', label: 'report', description: '25-theme dashboard with SEO + liquidity' },
+        { value: 'audit', label: 'audit', description: 'Flag STALE/NO_INVENTORY/THIN themes' },
+        { value: 'overlap', label: 'overlap', description: 'Cross-theme dedupe' },
+        { value: 'show <name>', label: 'show <name>', description: 'Drill into one theme' },
+        { value: 'create <name> --tickers KX-A,KX-B', label: 'create', description: 'Add a new theme' },
+        { value: 'add-series <name> KX-A,KX-B', label: 'add-series', description: 'Map series to a theme' },
+        { value: 'export themes.json', label: 'export', description: 'Save registry to JSON' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
+    }},
     { name: 'basket', description: 'Build, backtest, or size diversified baskets', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
       const opts = [
         { value: 'build', label: 'build', description: 'Diversified basket builder (cluster + correlation caps)' },
@@ -432,6 +473,8 @@ export async function runCli(options?: { forceSetup?: boolean }) {
         { value: 'candles', label: 'candles', description: 'OHLC bars for a weighted basket NAV' },
         { value: 'build --category crypto --min-volume 10000 -n 8 --max-per-cluster 2 --max-corr 0.6', label: 'build crypto basket', description: 'Build 8-leg crypto basket' },
         { value: 'backtest --tickers KX-A,KX-B --timeframe 1y', label: 'backtest 1y', description: 'Backtest a basket over 1y' },
+        { value: 'backtest --theme "Iran Escalation" --timeframe 3m', label: 'backtest --theme', description: 'Backtest an editorial theme NAV' },
+        { value: 'candles --theme "Fed Cuts Aggressively" --timeframe 1y', label: 'candles --theme', description: 'NAV candles for a theme' },
       ];
       if (!typed) return opts;
       return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));

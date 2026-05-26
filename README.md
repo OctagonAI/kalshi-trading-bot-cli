@@ -127,6 +127,15 @@ Type help for commands, or just ask a question.
 | `basket backtest` | NAV summary: total return, Sharpe, max drawdown, win rate |
 | `basket size` | Fractional Kelly sizing for picked legs |
 | `basket candles` | OHLC bars for a weighted basket NAV |
+| `basket backtest --theme <name>` | Resolve an editorial theme to a NAV basket and backtest it |
+| `events` / `events <ticker>` | Octagon events list + outcome ladder per event |
+| `series` / `series <ticker>` | Kalshi series rollup (24h vol, market count) |
+| `series candles <ticker>` | Series-level NAV (basket of top sub-markets) |
+| `catalysts upcoming --days N` | Markets closing in the next N days, grouped by week |
+| `themes` (registry) | Editorial narrative buckets — list/show/import/create/delete/add-series |
+| `themes report` | 25-theme dashboard with SEO + liquidity |
+| `themes audit` | Flag dead themes (high SEO + zero volume) |
+| `themes overlap` | Cross-theme dedupe report |
 | `analyze <ticker>` | Deep analysis: edge, drivers, Kelly sizing |
 | `watch <ticker>` | Live price and orderbook feed |
 | `watch --theme <theme>` | Continuous theme scan |
@@ -183,6 +192,9 @@ Type help for commands, or just ask a question.
 | `--tickers <csv>` | Comma-separated tickers (correlate, basket backtest/candles) |
 | `-q "text"` | Free-text anchor for similar / basket build |
 | `--show-cluster` | Print cluster membership only (peers) |
+| `--theme <name>` | Resolve an editorial theme to a ticker list (basket backtest/candles) |
+| `--aggregate-by series` | Roll up search results to the series level |
+| `--active-only` | Drop non-active markets (defensive flag — open universe by default) |
 
 ### Discovery & Portfolio (Octagon-powered)
 
@@ -227,6 +239,56 @@ kalshi basket backtest --tickers KX-A,KX-B,KX-C --weights 0.4,0.4,0.2 --timefram
 
 # Kelly-size legs you've already picked
 kalshi basket size --bankroll 1000 --kelly 0.25 --probs KX-A:0.62,KX-B:0.55
+```
+
+### Editorial Theme Dashboard
+
+`themes` is a local registry of editorial narrative buckets (e.g. "AI Race Milestones", "Iran Escalation") that maps to lists of Kalshi series with optional monthly search-volume annotations. The bot ships with a 25-theme seed dataset in `data/themes_seo.json`. Distinct from Octagon's ML clusters — these are *narratives* you curate.
+
+```bash
+# Seed from the included starter dataset (25 themes, 173 series mappings)
+kalshi themes import
+
+# Browse the registry
+kalshi themes list
+kalshi themes show "Iran Escalation"
+
+# THE dashboard view: 25-theme grid with SEO + liquidity
+kalshi themes report
+
+# Flag dead themes (high SEO + zero active Kalshi inventory)
+kalshi themes audit
+#   → Epstein / Celebrity Trials   STALE         4.3M searches, 0 active markets
+#   → RFK Jr Changes Health        NO_INVENTORY  422k searches, 0 active markets
+#   → AI Race Milestones           TRADEABLE     138M searches, 28 active mkts
+#   → Bitcoin Breakout             TRADEABLE     29k searches, 270 active mkts
+
+# Cross-theme dedupe (when a series belongs to multiple themes)
+kalshi themes overlap
+#   → KXUSAIRANAGREEMENT  Iran Escalation · Nuclear Renaissance
+#   → KXMORTGAGERATE      Fed Cuts Aggressively · Housing / Mortgage Crisis
+
+# Build/manage your own themes
+kalshi themes create "My Macro Hedge" --label "..." --tickers KXRECSSNBER,KXCPIYOY
+kalshi themes add-series "My Macro Hedge" KXFEDDECISION,KXU3
+kalshi themes set-search-volume "My Macro Hedge" 50000
+
+# Backtest an entire theme as a NAV basket (one top market per series)
+kalshi basket backtest --theme "Iran Escalation" --timeframe 3m
+kalshi basket candles --theme "Fed Cuts Aggressively" --timeframe 1y --json
+
+# Series-level rollup and NAV
+kalshi series list --min-volume 10000              # liquid series, ranked
+kalshi series KXBTCD --limit 10                    # drill in
+kalshi series candles KXBTCD --timeframe 3m        # series NAV momentum
+kalshi series search bitcoin --limit 10            # keyword → rollup
+
+# Event ↔ outcome ladder
+kalshi events --category Politics --limit 10       # top political events by volume
+kalshi events KXFEDCHAIRNOM-29                     # outcome probabilities + per-contract edge
+
+# Catalyst calendar
+kalshi catalysts upcoming --days 14 --min-volume 5000 --category Politics
 ```
 
 ### Backtesting

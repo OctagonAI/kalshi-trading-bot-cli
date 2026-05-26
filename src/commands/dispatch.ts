@@ -33,6 +33,10 @@ import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
 import { searchKalshiMarkets, getMarketsWithEdge } from '../scan/octagon-kalshi-api.js';
 import { formatMarketSearchHuman, formatMarketsWithEdgeHuman } from './search-remote.js';
+import { handleEvents, formatEventsHuman } from './events.js';
+import { handleSeries, formatSeriesHuman } from './series.js';
+import { handleEditorialThemes, formatEditorialThemesHuman } from './editorial-themes.js';
+import { handleCatalysts, formatCatalystsHuman } from './catalysts.js';
 
 // ─── Alias resolution ────────────────────────────────────────────────────────
 // Maps legacy CLI subcommands to canonical commands with mode/subview context
@@ -52,9 +56,9 @@ function resolveAlias(subcommand: Subcommand, positionalArgs: string[]): Resolve
     case 'status':
       return { canonical: 'portfolio', subview: 'status' };
 
-    // themes → search themes
-    case 'themes':
-      return { canonical: 'search', subview: 'themes' };
+    // `themes` is now the editorial-themes registry (curated narrative buckets).
+    // Legacy "kalshi search themes" (Kalshi category labels) is still reachable
+    // via `search themes`.
 
     // basket sub-routing (build/backtest/size/candles) — exposed for telemetry granularity
     case 'basket': {
@@ -168,18 +172,49 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
 
       // Octagon-powered server-side search: broader universe, full-text + structured filters.
       if (process.env.OCTAGON_API_KEY) {
+        // --aggregate-by series → route to series rollup
+        if (args.aggregateBy === 'series') {
+          const { handleSeries, formatSeriesHuman } = await import('./series.js');
+          const seriesArgs = { ...args, positionalArgs: query ? ['search', query] : ['list'] };
+          const resp = await handleSeries(seriesArgs);
+          if (json) {
+            console.log(JSON.stringify(resp));
+          } else if (resp.ok) {
+            console.log(formatSeriesHuman(resp.data));
+          } else {
+            console.error(resp.error?.message ?? 'series rollup failed');
+          }
+          process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+          return;
+        }
+        // Fetch a generous page so client-side sort gives a reasonable top-N.
+        const rawLimit = args.sortBy ? Math.max(args.limit ?? 30, 200) : (args.limit ?? 30);
         const page = await searchKalshiMarkets({
           q: query,
           category: args.category,
           series_ticker: args.seriesTicker,
           min_volume_24h: args.minVolume,
           close_before: args.closeBefore,
-          limit: args.limit ?? 30,
+          limit: rawLimit,
         });
+        // --active-only is already implicit (Octagon /kalshi/markets returns the open
+        // universe), but enforce defensively in case the API surface relaxes later.
+        let rows = args.activeOnly
+          ? page.data.filter((m) => m.status === 'active' || m.status === 'open')
+          : page.data;
+        if (args.sortBy === 'volume_24h') {
+          rows = rows.slice().sort((a, b) => (b.volume_24h ?? 0) - (a.volume_24h ?? 0));
+        } else if (args.sortBy === 'close_time') {
+          rows = rows.slice().sort((a, b) => (a.close_time ?? 'z').localeCompare(b.close_time ?? 'z'));
+        } else if (args.sortBy === 'last_price') {
+          rows = rows.slice().sort((a, b) => (b.last_price ?? 0) - (a.last_price ?? 0));
+        }
+        if (args.sortBy) rows = rows.slice(0, args.limit ?? 30);
+        const filteredPage = { ...page, data: rows };
         if (json) {
-          console.log(JSON.stringify(wrapSuccess('search', page)));
+          console.log(JSON.stringify(wrapSuccess('search', filteredPage)));
         } else {
-          console.log(formatMarketSearchHuman(query, page));
+          console.log(formatMarketSearchHuman(query, filteredPage));
         }
         return;
       }
@@ -353,6 +388,62 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         console.log(formatCorrelationHuman(resp.data));
       } else {
         console.error(resp.error?.message ?? 'correlate failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── catalysts (upcoming market closes grouped by week) ────────────
+    if (resolved.canonical === 'catalysts') {
+      const resp = await handleCatalysts(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatCatalystsHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'catalysts failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── themes (editorial narrative registry) ─────────────────────────
+    if (resolved.canonical === 'themes') {
+      const resp = await handleEditorialThemes(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatEditorialThemesHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'themes failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── series (Kalshi series rollup) ─────────────────────────────────
+    if (resolved.canonical === 'series') {
+      const resp = await handleSeries(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatSeriesHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'series failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── events (Octagon events list / detail) ─────────────────────────
+    if (resolved.canonical === 'events') {
+      const resp = await handleEvents(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatEventsHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'events failed');
       }
       process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
       return;
