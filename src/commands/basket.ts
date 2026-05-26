@@ -116,7 +116,10 @@ export async function handleBasketBuild(args: ParsedArgs): Promise<CLIResponse<B
 
 export function formatBasketBuildHuman(data: BasketBuildResponse): string {
   const lines: string[] = [];
-  lines.push(`Basket — ${data.legs.length} legs, ${data.universe_size} candidates considered, realized max pairwise correlation ${data.realized_max_pairwise_correlation.toFixed(2)}`);
+  const corrStr = data.realized_max_pairwise_correlation == null
+    ? 'n/a (no overlapping history)'
+    : data.realized_max_pairwise_correlation.toFixed(2);
+  lines.push(`Basket — ${data.legs.length} legs, ${data.universe_size} candidates considered, realized max pairwise correlation ${corrStr}`);
   lines.push('');
 
   if (data.legs.length === 0) {

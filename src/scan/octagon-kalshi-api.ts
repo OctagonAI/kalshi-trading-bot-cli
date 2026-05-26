@@ -221,7 +221,7 @@ export interface BasketBuildLeg {
 
 export interface BasketBuildResponse {
   legs: BasketBuildLeg[];
-  realized_max_pairwise_correlation: number;
+  realized_max_pairwise_correlation: number | null;
   cluster_breakdown: Record<string, number>;
   dropped: { market_ticker: string; reason: string }[];
   universe_size: number;
