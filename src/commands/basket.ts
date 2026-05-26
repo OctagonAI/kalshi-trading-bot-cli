@@ -114,7 +114,7 @@ async function tickersFromTheme(themeName: string, topPerSeries: number, maxTota
 // ─── build ──────────────────────────────────────────────────────────────────
 
 export async function handleBasketBuild(args: ParsedArgs): Promise<CLIResponse<BasketBuildResponse>> {
-  const probs = parseProbabilities(args.probabilities);
+  let probs = parseProbabilities(args.probabilities);
   const wantsKelly = args.bankroll !== undefined || args.kellyMultiplier !== undefined || probs !== undefined;
 
   if (wantsKelly && args.bankroll === undefined) {
@@ -125,10 +125,46 @@ export async function handleBasketBuild(args: ParsedArgs): Promise<CLIResponse<B
     ? args.labelContains.split(',').map((s) => s.trim()).filter(Boolean)
     : undefined;
 
+  // --theme <name> or --tickers KX-A,KX-B: pass explicit candidate pool via the
+  // new universe.market_tickers field. Server-side resolver respects this when
+  // wired up; falls back to the default search universe otherwise.
+  let marketTickers: string[] | undefined;
+  if (args.theme) {
+    try {
+      marketTickers = await tickersFromTheme(args.theme, args.topK ?? 1, 200);
+    } catch (err) {
+      return wrapError('basket', 'THEME_RESOLVE', err instanceof Error ? err.message : String(err));
+    }
+    if (marketTickers.length === 0) {
+      return wrapError('basket', 'THEME_EMPTY', `Theme "${args.theme}" resolved to 0 markets.`);
+    }
+  } else if (args.tickers) {
+    marketTickers = args.tickers.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+  }
+
+  // --auto-probs: fetch model probabilities for the candidate pool so Kelly
+  // sizing isn't reliant on manual --probs entry.
+  if (args.autoProbs && marketTickers && marketTickers.length > 0 && !probs) {
+    try {
+      const edgeResp = await getMarketsEdge({ tickers: marketTickers });
+      const scored = edgeResp.data.filter((r) => r.status === 'scored' && r.model_probability != null);
+      if (scored.length > 0) {
+        probs = {};
+        for (const row of scored) {
+          const key = row.market_ticker ?? row.input_ticker;
+          probs[key.toUpperCase()] = row.model_probability!;
+        }
+      }
+    } catch {
+      // Best-effort — fall through to manual probs / equal sizing.
+    }
+  }
+
   const body: BasketBuildBody = {
     universe: {
       q: args.query,
       anchor_ticker: args.ticker,
+      market_tickers: marketTickers,
       category: args.category,
       series_ticker: args.seriesTicker,
       min_volume_24h: args.minVolume,
@@ -138,9 +174,9 @@ export async function handleBasketBuild(args: ParsedArgs): Promise<CLIResponse<B
     n: args.n ?? 5,
     max_per_cluster: args.maxPerCluster,
     max_pairwise_correlation: args.maxCorrelation,
-    candidate_pool_size: args.limit,
+    candidate_pool_size: args.limit ?? (marketTickers ? Math.max(marketTickers.length, 50) : undefined),
     correlation_window_days: args.windowDays,
-    sizing: wantsKelly
+    sizing: (wantsKelly || probs)
       ? {
           strategy: 'kelly',
           bankroll_usd: args.bankroll,

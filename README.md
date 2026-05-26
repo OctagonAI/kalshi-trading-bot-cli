@@ -251,6 +251,10 @@ kalshi basket size --bankroll 1000 --kelly 0.25 --probs KX-A:0.62,KX-B:0.55
 kalshi basket size --auto-probs --tickers KX-A,KX-B,KX-C --bankroll 1000 --kelly 0.25
 kalshi basket size --auto-probs --theme "AI Race Milestones" --bankroll 1000 --kelly 0.25
 
+# Diversified basket builder over an explicit candidate pool
+kalshi basket build --tickers KX-A,KX-B,KX-C,KX-D -n 3 --max-per-cluster 1 --max-corr 0.5
+kalshi basket build --theme "Iran Escalation" -n 4 --max-per-cluster 1 --max-corr 0.5 --auto-probs --bankroll 1000
+
 # Sanity-check a proposed basket before placing orders (one call, server-side)
 kalshi basket validate --tickers KX-A,KX-B --bankroll 1000 --max-corr 0.5
 kalshi basket validate --theme "Iran Escalation" --bankroll 1000

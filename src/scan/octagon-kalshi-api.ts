@@ -386,6 +386,7 @@ export function getBasketSize(body: BasketSizeBody): Promise<BasketSizeResponse>
 export interface BasketBuildUniverse {
   q?: string;
   anchor_ticker?: string;
+  market_tickers?: string[];   // explicit candidate pool (1–200); takes precedence over q/anchor
   category?: string;
   series_ticker?: string;
   min_volume_24h?: number;

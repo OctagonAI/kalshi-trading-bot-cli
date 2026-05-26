@@ -387,6 +387,65 @@ describe('Octagon Kalshi commands', () => {
     expect(calledUrl).toContain('sort_by=total_volume_24h');
   });
 
+  test('basket build --tickers passes universe.market_tickers', async () => {
+    let postedBody: any;
+    installFetchMock(async (url, init) => {
+      expect(url).toContain('/baskets/build');
+      postedBody = JSON.parse((init?.body as string) ?? '{}');
+      return jsonResponse({
+        legs: [], realized_max_pairwise_correlation: null,
+        cluster_breakdown: {}, dropped: [], universe_size: 2,
+      });
+    });
+    const { handleBasket } = await import('../basket.js');
+    const resp = await handleBasket(makeArgs({
+      subcommand: 'basket', positionalArgs: ['build'],
+      tickers: 'KX-A,KX-B', n: 2, maxPerCluster: 1, maxCorrelation: 0.5,
+    }));
+    expect(resp.ok).toBe(true);
+    expect(postedBody.universe.market_tickers).toEqual(['KX-A', 'KX-B']);
+    expect(postedBody.n).toBe(2);
+    expect(postedBody.max_per_cluster).toBe(1);
+    expect(postedBody.sizing.strategy).toBe('equal');
+  });
+
+  test('basket build --auto-probs fetches edges and switches to kelly sizing', async () => {
+    let edgeCalled = false;
+    let buildBody: any;
+    installFetchMock(async (url, init) => {
+      if (url.includes('/markets/edge')) {
+        edgeCalled = true;
+        const body = JSON.parse((init?.body as string) ?? '{}');
+        expect(body.tickers).toEqual(['KX-A', 'KX-B']);
+        return jsonResponse({
+          run_id: 'r', captured_at: 'now', data: [
+            { input_ticker: 'KX-A', market_ticker: 'KX-A', event_ticker: 'KX-A', title: null, series_category: null, model_probability: 0.62, market_probability: 0.55, edge_pp: 7, expected_return: 0.13, confidence_score: 7, total_volume: 100, total_open_interest: 50, status: 'scored', captured_at: 'now' },
+            { input_ticker: 'KX-B', market_ticker: 'KX-B', event_ticker: 'KX-B', title: null, series_category: null, model_probability: null, market_probability: null, edge_pp: null, expected_return: null, confidence_score: null, total_volume: null, total_open_interest: null, status: 'unscored', captured_at: null },
+          ],
+        });
+      }
+      if (url.includes('/baskets/build')) {
+        buildBody = JSON.parse((init?.body as string) ?? '{}');
+        return jsonResponse({
+          legs: [], realized_max_pairwise_correlation: null,
+          cluster_breakdown: {}, dropped: [], universe_size: 2,
+        });
+      }
+      return jsonResponse({});
+    });
+    const { handleBasket } = await import('../basket.js');
+    const resp = await handleBasket(makeArgs({
+      subcommand: 'basket', positionalArgs: ['build'],
+      tickers: 'KX-A,KX-B', autoProbs: true, bankroll: 1000, kellyMultiplier: 0.25, n: 2,
+    }));
+    expect(resp.ok).toBe(true);
+    expect(edgeCalled).toBe(true);
+    expect(buildBody.universe.market_tickers).toEqual(['KX-A', 'KX-B']);
+    expect(buildBody.sizing.strategy).toBe('kelly');
+    // Only KX-A was scored, so leg_probabilities has 1 entry
+    expect(buildBody.sizing.leg_probabilities).toEqual({ 'KX-A': 0.62 });
+  });
+
   test('series KXBTCD uses series_prefix server-side', async () => {
     let calledUrl = '';
     installFetchMock(async (url) => {

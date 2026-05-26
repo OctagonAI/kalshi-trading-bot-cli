@@ -314,6 +314,10 @@ Build flags (universe + diversification):
   --label <csv>                 Restrict cluster labels (substring match, comma-separated)
   -q "<text>"                   Anchor candidate pool by free-text intent (semantic)
   --ticker <ticker>             Anchor candidate pool by ticker (semantic)
+  --tickers KX-A,KX-B           Explicit candidate pool (universe.market_tickers)
+  --theme <name>                Resolve theme registry → explicit candidate pool
+  --auto-probs                  Auto-fetch model probabilities (markets/edge)
+                                and use Kelly sizing
   -n <n>                        Number of legs (1-20)
   --max-per-cluster <n>         Cap legs per thematic cluster
   --max-corr <x>                Pairwise correlation cap (-1 to 1)
@@ -340,6 +344,8 @@ Common:
 Recipes:
   ${p}basket build --category crypto --min-volume 10000 -n 8 --max-per-cluster 2 --max-corr 0.6
   ${p}basket build --label fed,cpi,fomc,gdp,jobs -n 5 --max-per-cluster 1 --max-corr 0.4
+  ${p}basket build --tickers KX-A,KX-B,KX-C -n 2 --max-corr 0.5   # explicit candidate pool
+  ${p}basket build --theme "Iran Escalation" -n 3 --max-per-cluster 1 --auto-probs --bankroll 1000
   ${p}basket backtest --tickers KX-A,KX-B,KX-C --weights 0.4,0.4,0.2 --timeframe 1y
   ${p}basket size --auto-probs --theme "Iran Escalation" --bankroll 1000 --kelly 0.25
   ${p}basket validate --theme "Iran Escalation" --bankroll 1000      # sanity-check before placing
