@@ -16,7 +16,9 @@ function defaultArgs(overrides: Partial<ParsedArgs>): ParsedArgs {
     subcommand: 'chat', positionalArgs: [], json: false,
     live: false, refresh: false, report: false, dryRun: false,
     verbose: false, performance: false, resolved: false,
-    unresolved: false, parseErrors: [],
+    unresolved: false,
+    behavioral: false, ranked: false, showCluster: false,
+    parseErrors: [],
     ...overrides,
   };
 }
@@ -27,6 +29,12 @@ import { reviewPortfolio, formatReviewHuman } from './review.js';
 import { buildHelp, validateTradeArgs } from './help.js';
 import { fetchMarketQuote } from './helpers.js';
 import { trackEvent } from '../utils/telemetry.js';
+import { parseArgs } from './parse-args.js';
+import { handleSimilar, formatSimilarHuman } from './similar.js';
+import { handleClusters, formatClustersHuman } from './clusters.js';
+import { handlePeers, formatPeersHuman } from './peers.js';
+import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
+import { handleBasket, formatBasketHuman } from './basket.js';
 
 export interface CommandResult {
   output: string;
@@ -122,6 +130,59 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
           return btArgs.exportPath
             ? `${text}\n\nExported per-market detail to ${btArgs.exportPath}`
             : text;
+        },
+      };
+    }
+
+    // ─── Octagon Kalshi search/clusters/basket ───────────────────────
+    case 'similar': {
+      const parsed = parseArgs(['similar', ...args]);
+      return {
+        output: 'Querying Octagon for similar markets...',
+        asyncFollowUp: async () => {
+          const resp = await handleSimilar(parsed);
+          return resp.ok ? formatSimilarHuman(resp.data) : (resp.error?.message ?? 'similar failed');
+        },
+      };
+    }
+    case 'clusters': {
+      const parsed = parseArgs(['clusters', ...args]);
+      return {
+        output: 'Querying Octagon for clusters...',
+        asyncFollowUp: async () => {
+          const resp = await handleClusters(parsed);
+          return resp.ok ? formatClustersHuman(resp.data) : (resp.error?.message ?? 'clusters failed');
+        },
+      };
+    }
+    case 'peers': {
+      const parsed = parseArgs(['peers', ...args]);
+      return {
+        output: 'Querying Octagon for cluster peers...',
+        asyncFollowUp: async () => {
+          const resp = await handlePeers(parsed);
+          return resp.ok ? formatPeersHuman(resp.data) : (resp.error?.message ?? 'peers failed');
+        },
+      };
+    }
+    case 'correlate': {
+      const parsed = parseArgs(['correlate', ...args]);
+      return {
+        output: 'Computing correlation matrix...',
+        asyncFollowUp: async () => {
+          const resp = await handleCorrelate(parsed);
+          return resp.ok ? formatCorrelationHuman(resp.data) : (resp.error?.message ?? 'correlate failed');
+        },
+      };
+    }
+    case 'basket': {
+      const parsed = parseArgs(['basket', ...args]);
+      const sub = parsed.positionalArgs[0] ?? '';
+      return {
+        output: `Running basket ${sub || '(no subcommand)'}...`,
+        asyncFollowUp: async () => {
+          const resp = await handleBasket(parsed);
+          return resp.ok ? formatBasketHuman(resp.data) : (resp.error?.message ?? 'basket failed');
         },
       };
     }

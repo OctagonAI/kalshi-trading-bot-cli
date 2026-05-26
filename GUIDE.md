@@ -80,7 +80,7 @@ Type `/model` to pick your LLM provider and model. Your choice persists across s
 
 ## Slash Commands
 
-Quick commands that bypass the AI agent and call the Kalshi API directly.
+Quick commands that bypass the AI agent and call the Kalshi or Octagon API directly.
 
 | Command | Description | Example |
 |---|---|---|
@@ -91,6 +91,19 @@ Quick commands that bypass the AI agent and call the Kalshi API directly.
 | `/orders` | Resting (open) orders | `/orders` |
 | `/markets [series]` | Browse markets, optionally filter by series ticker | `/markets KXBTC` |
 | `/market <ticker>` | Market detail + top-of-book orderbook | `/market KXBTC-26MAR-B80000` |
+| `/search <query>` | Full-text market search (Octagon when key set) | `/search "bitcoin price" --min-volume 10000` |
+| `/search edge` | Edge ranking from Octagon's latest run | `/search edge --min-edge 5 --sort-by total_volume` |
+| `/similar <ticker\|"text">` | Semantic neighbors via embeddings | `/similar KXBTCD-26DEC31-T100000 --top-k 20` |
+| `/clusters [--label X]` | Browse thematic clusters | `/clusters --label fed` |
+| `/clusters <id>` | List markets inside a cluster | `/clusters 42` |
+| `/clusters --behavioral` | Behavioral clusters by 30-day return vectors | `/clusters --behavioral` |
+| `/clusters --ranked` | Rank clusters by historical basket return | `/clusters --ranked --timeframe 1y --min-return 0.2` |
+| `/peers <ticker>` | Markets in the same cluster | `/peers KXBTCD-... --limit 50` |
+| `/correlate <t1> <t2> [...]` | Pairwise correlation matrix | `/correlate KX-A KX-B KX-C --window-days 90` |
+| `/basket build` | Diversified basket (cluster + correlation caps) | `/basket build --category crypto -n 8 --max-corr 0.6` |
+| `/basket backtest` | Total return / Sharpe / max DD on a basket | `/basket backtest --tickers KX-A,KX-B --timeframe 1y` |
+| `/basket size` | Fractional Kelly sizing for picked legs | `/basket size --bankroll 1000 --kelly 0.25 --probs KX-A:0.62` |
+| `/basket candles` | OHLC bars for a weighted basket NAV | `/basket candles --tickers KX-A,KX-B --timeframe 6m` |
 | `/buy <ticker> <count> [price]` | Buy YES contracts (price in cents) | `/buy KXBTC-26MAR-B80000 5 56` |
 | `/sell <ticker> <count> [price]` | Sell YES contracts | `/sell KXBTC-26MAR-B80000 5 60` |
 | `/cancel <order_id>` | Cancel a resting order | `/cancel abc-123-def` |
@@ -98,6 +111,101 @@ Quick commands that bypass the AI agent and call the Kalshi API directly.
 **Trade confirmation:** `/buy` and `/sell` always show a confirmation prompt before executing. Type `yes` to confirm or `no` to cancel.
 
 **Price format:** Prices are always in cents. `56` = $0.56 = 56% implied probability.
+
+---
+
+## Discovery & Portfolio (Octagon-powered)
+
+With `OCTAGON_API_KEY` set, the bot routes searches through Octagon's typed Kalshi endpoints. This unlocks semantic similarity, thematic and behavioral clustering, pairwise correlation matrices, and one-call diversified basket construction. Without a key the bot falls back to the local SQLite index for `/search` and `/search edge`; the other commands require the key.
+
+### `/search` and `/search edge`
+
+```bash
+# Server-side full-text + structured filter
+kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
+
+# Edge ranking from Octagon's latest events run
+kalshi search edge --min-edge 5 --limit 10 --sort-by total_volume
+kalshi search edge --category politics --sort-by edge_pp
+```
+
+Flags (server-side path): `--category`, `--series <ticker>`, `--min-volume <n>`, `--close-before <iso>`, `--limit <n>`, `--sort-by <edge_pp|expected_return|total_volume|model_probability>`.
+
+### `/similar`
+
+Catches semantic matches keyword search misses ("Will Bitcoin pierce six figures" ↔ "BTC > $100k").
+
+```bash
+kalshi similar KXBTCD-26DEC31-T100000 --top-k 25                # anchor by ticker (no embedding call)
+kalshi similar -q "Will Bitcoin pierce six figures" --category crypto
+kalshi similar -q "ETH 2.0 staking" --category crypto --min-volume 10000 --close-before 2026-08-19T00:00:00Z
+```
+
+Lower `distance` = closer cosine similarity.
+
+### `/clusters`
+
+```bash
+kalshi clusters                              # thematic clusters, with sample titles
+kalshi clusters --label fed                  # find Fed-decision clusters
+kalshi clusters 42                           # markets in cluster 42 (by distance)
+kalshi clusters --behavioral                 # behavioral clusters (mean return + volatility)
+kalshi clusters --ranked --timeframe 1y --min-return 0.20 --top-k 5
+```
+
+### `/peers`
+
+One-call "show me others in the same theme" — replaces the two-step `/clusters` lookup → `/clusters <id>` dance.
+
+```bash
+kalshi peers KXBTCD-26DEC31-T100000 --limit 50      # thematic peers (default)
+kalshi peers KXBTCD-26DEC31-T100000 --behavioral    # behavioral peers
+kalshi peers KXBTCD-26DEC31-T100000 --show-cluster  # only print cluster membership
+```
+
+### `/correlate`
+
+```bash
+kalshi correlate KXBTCD-... KXETHU-... KXSOL-... --window-days 90
+```
+
+Returns the NxN matrix plus a `ranked_pairs` array sorted ascending — most-uncorrelated pairs first.
+
+### `/basket build`
+
+Pulls a candidate universe, computes correlations, greedily selects legs respecting both `--max-per-cluster` and `--max-corr`, then sizes them. Pass `--bankroll` + `--kelly` + `--probs` for Kelly sizing, omit for equal-weight.
+
+```bash
+# 8-leg crypto basket, Kelly-sized
+kalshi basket build --category crypto --min-volume 10000 \
+  -n 8 --max-per-cluster 2 --max-corr 0.6 \
+  --bankroll 1000 --kelly 0.25 \
+  --probs KXBTCD-...:0.62,KXETHU-...:0.58
+
+# 5 uncorrelated bets on macro themes
+kalshi basket build --label fed,cpi,fomc,gdp,jobs \
+  -n 5 --max-per-cluster 1 --max-corr 0.4
+```
+
+### `/basket backtest` / `/basket candles`
+
+```bash
+kalshi basket backtest --tickers KX-A,KX-B,KX-C --weights 0.4,0.4,0.2 --timeframe 1y
+kalshi basket candles  --tickers KX-A,KX-B --timeframe 6m --json
+```
+
+Read `summary.total_return`, `summary.sharpe`, `summary.max_drawdown` directly. Annualization uses calendar seconds (Kalshi trades 24/7), not 252 trading days.
+
+### `/basket size`
+
+Kelly-size legs you've already picked. Probabilities are 0–1 fractions.
+
+```bash
+kalshi basket size --bankroll 1000 --kelly 0.25 \
+  --probs KX-A:0.62,KX-B:0.55 --side yes
+```
+
+The server looks up live `yes_bid`/`no_bid` for each leg to compute edge and Kelly fraction. Legs with no edge (`prob < price`) get `kelly_fraction = 0`.
 
 ---
 

@@ -354,6 +354,11 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   const helpTopicCompletions = (typed: string): AutocompleteItem[] | null => {
     const topics = [
       { value: 'search', label: 'search', description: 'Discovery commands' },
+      { value: 'similar', label: 'similar', description: 'Semantic market search (Octagon)' },
+      { value: 'clusters', label: 'clusters', description: 'Browse thematic & behavioral clusters' },
+      { value: 'peers', label: 'peers', description: 'Cluster peers for a ticker' },
+      { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
+      { value: 'basket', label: 'basket', description: 'Build / backtest / size baskets' },
       { value: 'portfolio', label: 'portfolio', description: 'Account state' },
       { value: 'analyze', label: 'analyze', description: 'Market analysis' },
       { value: 'watch', label: 'watch', description: 'Live monitoring' },
@@ -393,6 +398,43 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       if (!typed) return opts;
       const lower = typed.toLowerCase();
       return opts.filter(o => o.value.toLowerCase().includes(lower));
+    }},
+    // Octagon Kalshi search/clusters/basket
+    { name: 'similar', description: 'Semantic market search by ticker or query', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: '<ticker>', label: '<ticker>', description: 'Anchor by ticker (no embedding call)' },
+        { value: '-q "query text"', label: '-q "query text"', description: 'Anchor by free-text (server-side embed)' },
+        { value: '--top-k 25', label: '--top-k 25', description: 'Number of neighbors (default 25)' },
+        { value: '--category crypto', label: '--category crypto', description: 'Filter by category' },
+        { value: '--min-volume 10000', label: '--min-volume 10000', description: '24h volume floor' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
+    }},
+    { name: 'clusters', description: 'Browse thematic & behavioral clusters', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: '--label fed', label: '--label fed', description: 'Filter by label substring' },
+        { value: '--behavioral', label: '--behavioral', description: 'Behavioral clusters (30-day return vectors)' },
+        { value: '--ranked', label: '--ranked', description: 'Rank clusters by historical basket return' },
+        { value: '--ranked --timeframe 1y --min-return 0.20', label: '--ranked --timeframe 1y --min-return 0.20', description: 'Top-return baskets, 1y window' },
+        { value: '<cluster_id>', label: '<cluster_id>', description: 'List markets in a specific cluster' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
+    }},
+    { name: 'peers', description: 'Find markets in the same cluster as a ticker', getArgumentCompletions: usageHint('<ticker> [--behavioral] [--limit N] [--show-cluster]', 'e.g. KXBTCD-26DEC31-T100000 --limit 20') },
+    { name: 'correlate', description: 'Pairwise correlation matrix (2-100 tickers)', getArgumentCompletions: usageHint('<ticker1> <ticker2> [...] [--window-days N]', 'e.g. KXA KXB KXC --window-days 90') },
+    { name: 'basket', description: 'Build, backtest, or size diversified baskets', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+      const opts = [
+        { value: 'build', label: 'build', description: 'Diversified basket builder (cluster + correlation caps)' },
+        { value: 'backtest', label: 'backtest', description: 'NAV + Sharpe/MaxDD/WinRate over basket history' },
+        { value: 'size', label: 'size', description: 'Fractional Kelly sizing for picked legs' },
+        { value: 'candles', label: 'candles', description: 'OHLC bars for a weighted basket NAV' },
+        { value: 'build --category crypto --min-volume 10000 -n 8 --max-per-cluster 2 --max-corr 0.6', label: 'build crypto basket', description: 'Build 8-leg crypto basket' },
+        { value: 'backtest --tickers KX-A,KX-B --timeframe 1y', label: 'backtest 1y', description: 'Backtest a basket over 1y' },
+      ];
+      if (!typed) return opts;
+      return opts.filter(o => o.value.toLowerCase().includes(typed.toLowerCase()));
     }},
     // Utility
     { name: 'help', description: 'Show help (/help <command> for details)', getArgumentCompletions: helpTopicCompletions },

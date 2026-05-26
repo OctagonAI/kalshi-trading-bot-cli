@@ -26,6 +26,13 @@ import { scanEdges, formatEdgeScanHuman } from './search-edge.js';
 import type { KalshiBalanceResponse } from './formatters.js';
 import { ExitCode, exitCodeFromError } from '../utils/errors.js';
 import { trackEvent } from '../utils/telemetry.js';
+import { handleSimilar, formatSimilarHuman } from './similar.js';
+import { handleClusters, formatClustersHuman } from './clusters.js';
+import { handlePeers, formatPeersHuman } from './peers.js';
+import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
+import { handleBasket, formatBasketHuman } from './basket.js';
+import { searchKalshiMarkets, getMarketsWithEdge } from '../scan/octagon-kalshi-api.js';
+import { formatMarketSearchHuman, formatMarketsWithEdgeHuman } from './search-remote.js';
 
 // ─── Alias resolution ────────────────────────────────────────────────────────
 // Maps legacy CLI subcommands to canonical commands with mode/subview context
@@ -87,8 +94,26 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         return;
       }
       if (sub === 'edge') {
-        const db = (await import('../db/index.js')).getDb();
         const minEdgePp = (args.minEdge ?? 0.05) * 100;
+        if (process.env.OCTAGON_API_KEY) {
+          // edge_pp_min is asymmetric (only filters lower bound). Skip when
+          // user passes --min-edge 0 so they see the full distribution.
+          const data = await getMarketsWithEdge({
+            category: args.category,
+            ...(minEdgePp > 0 ? { edge_pp_min: minEdgePp } : {}),
+            sort_by: (args.sortBy as 'edge_pp' | 'expected_return' | 'total_volume' | 'model_probability' | undefined) ?? 'edge_pp',
+            limit: args.limit ?? 20,
+          });
+          if (json) {
+            console.log(JSON.stringify(wrapSuccess('search', data)));
+          } else {
+            console.log(formatMarketsWithEdgeHuman(data, minEdgePp));
+          }
+          process.exit(ExitCode.SUCCESS);
+          return;
+        }
+        // Local fallback: scan cached Octagon reports in SQLite
+        const db = (await import('../db/index.js')).getDb();
         const result = scanEdges(db, { minEdgePp, limit: args.limit, category: args.category });
         if (json) {
           console.log(JSON.stringify(wrapSuccess('search', result)));
@@ -109,14 +134,33 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
         return;
       }
-      // General search: query the local event index
+      const query = args.positionalArgs.join(' ');
+
+      // Octagon-powered server-side search: broader universe, full-text + structured filters.
+      if (process.env.OCTAGON_API_KEY) {
+        const page = await searchKalshiMarkets({
+          q: query,
+          category: args.category,
+          series_ticker: args.seriesTicker,
+          min_volume_24h: args.minVolume,
+          close_before: args.closeBefore,
+          limit: args.limit ?? 30,
+        });
+        if (json) {
+          console.log(JSON.stringify(wrapSuccess('search', page)));
+        } else {
+          console.log(formatMarketSearchHuman(query, page));
+        }
+        return;
+      }
+
+      // Local fallback: query the pre-built event index.
       if (args.refresh) {
         await forceRefreshIndex();
       } else {
         await ensureIndex();
       }
       const db = (await import('../db/index.js')).getDb();
-      const query = args.positionalArgs.join(' ');
       const results = searchEventIndex(db, query, 30);
       if (json) {
         console.log(JSON.stringify(wrapSuccess('search', { events: results })));
@@ -225,6 +269,76 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         }
         await promptAnalyzeActions(data);
       }
+      return;
+    }
+
+    // ─── similar (Octagon semantic search) ─────────────────────────────
+    if (resolved.canonical === 'similar') {
+      const resp = await handleSimilar(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatSimilarHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'similar failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── clusters (Octagon thematic & behavioral) ──────────────────────
+    if (resolved.canonical === 'clusters') {
+      const resp = await handleClusters(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatClustersHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'clusters failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── peers (Octagon cluster peers) ─────────────────────────────────
+    if (resolved.canonical === 'peers') {
+      const resp = await handlePeers(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatPeersHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'peers failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── correlate (Octagon correlation matrix) ────────────────────────
+    if (resolved.canonical === 'correlate') {
+      const resp = await handleCorrelate(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatCorrelationHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'correlate failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── basket (build, backtest, size, candles) ───────────────────────
+    if (resolved.canonical === 'basket') {
+      const resp = await handleBasket(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatBasketHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'basket failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
       return;
     }
 

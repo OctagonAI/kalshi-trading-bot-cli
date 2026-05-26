@@ -7,6 +7,8 @@ const SUBCOMMANDS = [
   'alerts', 'config', 'clear-cache', 'chat', 'init', 'status', 'themes',
   // Backtest
   'backtest',
+  // Octagon Kalshi search/clusters/basket (new)
+  'similar', 'clusters', 'peers', 'correlate', 'basket',
 ] as const;
 
 export type Subcommand = (typeof SUBCOMMANDS)[number];
@@ -39,6 +41,28 @@ export interface ParsedArgs {
   minVolume?: number;
   minPrice?: number;
   maxPrice?: number;
+  // Octagon Kalshi search/clusters/basket flags
+  topK?: number;
+  behavioral: boolean;
+  ranked: boolean;
+  labelContains?: string;
+  closeBefore?: string;
+  windowDays?: number;
+  correlationInterval?: '1h' | '1d';
+  timeframe?: '1w' | '1m' | '3m' | '6m' | '1y';
+  weights?: number[];
+  bankroll?: number;
+  kellyMultiplier?: number;
+  n?: number;
+  maxPerCluster?: number;
+  maxCorrelation?: number;
+  minReturn?: number;
+  seriesTicker?: string;
+  sortBy?: string;
+  probabilities?: string;
+  tickers?: string;
+  query?: string;
+  showCluster: boolean;
   parseErrors: string[];
 }
 
@@ -69,6 +93,28 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let minVolume: number | undefined;
   let minPrice: number | undefined;
   let maxPrice: number | undefined;
+  // Octagon Kalshi flags
+  let topK: number | undefined;
+  let behavioral = false;
+  let ranked = false;
+  let labelContains: string | undefined;
+  let closeBefore: string | undefined;
+  let windowDays: number | undefined;
+  let correlationInterval: '1h' | '1d' | undefined;
+  let timeframe: '1w' | '1m' | '3m' | '6m' | '1y' | undefined;
+  let weights: number[] | undefined;
+  let bankroll: number | undefined;
+  let kellyMultiplier: number | undefined;
+  let n: number | undefined;
+  let maxPerCluster: number | undefined;
+  let maxCorrelation: number | undefined;
+  let minReturn: number | undefined;
+  let seriesTicker: string | undefined;
+  let sortBy: string | undefined;
+  let probabilities: string | undefined;
+  let tickers: string | undefined;
+  let query: string | undefined;
+  let showCluster = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -203,6 +249,107 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
         if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 100) { maxPrice = numeric; }
         else { parseErrors.push(`Invalid --max-price value: "${raw}" (expected 0-100)`); }
       } else { parseErrors.push('--max-price requires a value'); }
+    } else if (arg === '--top-k') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { topK = numeric; }
+        else { parseErrors.push(`Invalid --top-k value: "${raw}" (expected a positive integer)`); }
+      } else { parseErrors.push('--top-k requires a value'); }
+    } else if (arg === '--behavioral') {
+      behavioral = true;
+    } else if (arg === '--ranked') {
+      ranked = true;
+    } else if (arg === '--show-cluster') {
+      showCluster = true;
+    } else if (arg === '--label') {
+      const val = argv[++i];
+      if (val != null) { labelContains = val; } else { parseErrors.push('--label requires a value'); }
+    } else if (arg === '--close-before') {
+      const val = argv[++i];
+      if (val != null) { closeBefore = val; } else { parseErrors.push('--close-before requires a value'); }
+    } else if (arg === '--window-days') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { windowDays = numeric; }
+        else { parseErrors.push(`Invalid --window-days value: "${raw}" (expected a positive integer)`); }
+      } else { parseErrors.push('--window-days requires a value'); }
+    } else if (arg === '--correlation-interval') {
+      const val = argv[++i];
+      if (val === '1h' || val === '1d') { correlationInterval = val; }
+      else { parseErrors.push(`Invalid --correlation-interval value: "${val}" (expected "1h" or "1d")`); }
+    } else if (arg === '--timeframe') {
+      const val = argv[++i];
+      if (val === '1w' || val === '1m' || val === '3m' || val === '6m' || val === '1y') {
+        timeframe = val;
+      } else {
+        parseErrors.push(`Invalid --timeframe value: "${val}" (expected one of 1w, 1m, 3m, 6m, 1y)`);
+      }
+    } else if (arg === '--weights') {
+      const val = argv[++i];
+      if (val != null) {
+        const parts = val.split(',').map((s) => Number(s.trim()));
+        if (parts.every((p) => Number.isFinite(p))) { weights = parts; }
+        else { parseErrors.push(`Invalid --weights value: "${val}" (expected comma-separated numbers)`); }
+      } else { parseErrors.push('--weights requires a value (e.g., --weights 0.4,0.4,0.2)'); }
+    } else if (arg === '--bankroll') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { bankroll = numeric; }
+        else { parseErrors.push(`Invalid --bankroll value: "${raw}" (expected a positive number)`); }
+      } else { parseErrors.push('--bankroll requires a value'); }
+    } else if (arg === '--kelly') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) { kellyMultiplier = numeric; }
+        else { parseErrors.push(`Invalid --kelly value: "${raw}" (expected 0-1)`); }
+      } else { parseErrors.push('--kelly requires a value (e.g., --kelly 0.25)'); }
+    } else if (arg === '-n' || arg === '--n') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { n = numeric; }
+        else { parseErrors.push(`Invalid -n value: "${raw}" (expected a positive integer)`); }
+      } else { parseErrors.push('-n requires a value'); }
+    } else if (arg === '--max-per-cluster') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric > 0) { maxPerCluster = numeric; }
+        else { parseErrors.push(`Invalid --max-per-cluster value: "${raw}" (expected a positive integer)`); }
+      } else { parseErrors.push('--max-per-cluster requires a value'); }
+    } else if (arg === '--max-corr') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && numeric >= -1 && numeric <= 1) { maxCorrelation = numeric; }
+        else { parseErrors.push(`Invalid --max-corr value: "${raw}" (expected -1 to 1)`); }
+      } else { parseErrors.push('--max-corr requires a value'); }
+    } else if (arg === '--min-return') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric)) { minReturn = numeric; }
+        else { parseErrors.push(`Invalid --min-return value: "${raw}" (expected a number, e.g. 0.2 for 20%)`); }
+      } else { parseErrors.push('--min-return requires a value'); }
+    } else if (arg === '--series') {
+      const val = argv[++i];
+      if (val != null) { seriesTicker = val; } else { parseErrors.push('--series requires a value'); }
+    } else if (arg === '--sort-by') {
+      const val = argv[++i];
+      if (val != null) { sortBy = val; } else { parseErrors.push('--sort-by requires a value'); }
+    } else if (arg === '--probs') {
+      const val = argv[++i];
+      if (val != null) { probabilities = val; } else { parseErrors.push('--probs requires a value (e.g., --probs KXBTC-...:0.62,KXETH-...:0.58)'); }
+    } else if (arg === '--tickers') {
+      const val = argv[++i];
+      if (val != null) { tickers = val; } else { parseErrors.push('--tickers requires a value (comma-separated list)'); }
+    } else if (arg === '-q' || arg === '--query') {
+      const val = argv[++i];
+      if (val != null) { query = val; } else { parseErrors.push(`${arg} requires a value`); }
     } else if (arg.startsWith('--')) {
       parseErrors.push(`Unknown flag: ${arg}`);
     } else {
@@ -225,5 +372,13 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     positionalArgs.unshift(first);
   }
 
-  return { subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side, live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, maxAge, category, limit, exportPath, minVolume, minPrice, maxPrice, parseErrors };
+  return {
+    subcommand, positionalArgs, json, theme, ticker, interval, since, minConfidence, minEdge, side,
+    live, refresh, report, dryRun, verbose, performance, resolved, unresolved, days, maxAge, category,
+    limit, exportPath, minVolume, minPrice, maxPrice,
+    topK, behavioral, ranked, labelContains, closeBefore, windowDays, correlationInterval, timeframe,
+    weights, bankroll, kellyMultiplier, n, maxPerCluster, maxCorrelation, minReturn, seriesTicker,
+    sortBy, probabilities, tickers, query, showCluster,
+    parseErrors,
+  };
 }

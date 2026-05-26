@@ -114,8 +114,19 @@ Type help for commands, or just ask a question.
 
 | Command | Description |
 |---------|-------------|
-| `search [theme\|ticker\|query]` | Find markets by keyword or theme |
-| `search edge [--min-edge N]` | Scan all markets by model edge |
+| `search [theme\|ticker\|query]` | Find markets by keyword or theme (Octagon-backed when key set) |
+| `search edge [--min-edge N]` | Scan all markets by model edge (Octagon `markets-with-edge`) |
+| `similar <ticker\|"query">` | Semantic neighbors via Octagon embeddings |
+| `clusters [--label X]` | Browse thematic clusters of the Kalshi universe |
+| `clusters <id>` | List markets inside a cluster |
+| `clusters --behavioral` | Behavioral clusters by 30-day return vectors |
+| `clusters --ranked` | Rank clusters by historical basket return |
+| `peers <ticker>` | Markets in the same cluster as a ticker |
+| `correlate <t1> <t2> [...]` | Pairwise Pearson correlation matrix |
+| `basket build` | Diversified basket with cluster + correlation caps |
+| `basket backtest` | NAV summary: total return, Sharpe, max drawdown, win rate |
+| `basket size` | Fractional Kelly sizing for picked legs |
+| `basket candles` | OHLC bars for a weighted basket NAV |
 | `analyze <ticker>` | Deep analysis: edge, drivers, Kelly sizing |
 | `watch <ticker>` | Live price and orderbook feed |
 | `watch --theme <theme>` | Continuous theme scan |
@@ -151,6 +162,72 @@ Type help for commands, or just ask a question.
 | `--min-price <n>` | Min contract price, 0-100 scale (backtest, default 5) |
 | `--max-price <n>` | Max contract price, 0-100 scale (backtest, default 95) |
 | `--export <path>` | Export per-market CSV (backtest) |
+| `--top-k <n>` | Number of neighbors (similar); legs per cluster (clusters --ranked) |
+| `--behavioral` | Use behavioral clustering (clusters, peers) |
+| `--ranked` | Rank clusters by historical basket return (clusters) |
+| `--label <substr,...>` | Filter by cluster label substring (clusters, basket build) |
+| `--close-before <iso>` | Only markets closing before this timestamp |
+| `--window-days <n>` | Correlation lookback (correlate; basket build) |
+| `--correlation-interval <1h\|1d>` | Override candle bin size for correlate |
+| `--timeframe <1w\|1m\|3m\|6m\|1y>` | Window/bin size for basket commands |
+| `--weights <csv>` | Comma-separated weights for basket backtest/candles |
+| `--bankroll <usd>` | Bankroll for Kelly sizing (basket size/build) |
+| `--kelly <0-1>` | Kelly multiplier (default 0.25) |
+| `-n <n>` | Basket size requested (basket build) |
+| `--max-per-cluster <n>` | Cap legs per thematic cluster (basket build) |
+| `--max-corr <-1..1>` | Pairwise correlation cap (basket build) |
+| `--min-return <n>` | Minimum total_return for clusters --ranked |
+| `--series <ticker>` | Filter to a Kalshi series (search, similar, basket) |
+| `--sort-by <key>` | Sort key for search edge: edge_pp \| expected_return \| total_volume \| model_probability |
+| `--probs <csv>` | Per-leg probabilities, e.g. `KX-A:0.62,KX-B:0.55` |
+| `--tickers <csv>` | Comma-separated tickers (correlate, basket backtest/candles) |
+| `-q "text"` | Free-text anchor for similar / basket build |
+| `--show-cluster` | Print cluster membership only (peers) |
+
+### Discovery & Portfolio (Octagon-powered)
+
+The `search`, `similar`, `clusters`, `peers`, `correlate`, and `basket` commands turn the whole Kalshi universe into a queryable database. When `OCTAGON_API_KEY` is set the bot routes searches through Octagon's typed endpoints — semantic embedding lookups, nightly k-means clusters (thematic + behavioral), Pearson correlation matrices, and one-call diversified basket construction with cluster caps and pairwise-correlation gates. Without a key, `search` and `search edge` fall back to the local SQLite cache.
+
+```bash
+# Free-text + structured search (semantic full-text + filters)
+kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
+
+# Edge ranking from Octagon's latest run (server-side, no local pre-fetch)
+kalshi search edge --min-edge 5 --limit 10 --sort-by total_volume
+
+# Semantic neighbors — catches matches keyword search misses
+kalshi similar KXBTCD-26DEC31-T100000 --top-k 25
+kalshi similar -q "Will Bitcoin pierce six figures" --category crypto
+
+# Browse the universe by theme
+kalshi clusters --label fed                 # find Fed-decision clusters
+kalshi clusters 42                          # markets in cluster 42
+kalshi clusters --behavioral                # behavioral clusters (mean ret + vol)
+kalshi clusters --ranked --timeframe 1y --min-return 0.20 --top-k 5
+
+# Same-theme dedup
+kalshi peers KXBTCD-26DEC31-T100000 --kind thematic --limit 50
+kalshi peers KXBTCD-26DEC31-T100000 --show-cluster     # which cluster does this belong to?
+
+# Pairwise correlation matrix — most-uncorrelated pairs first
+kalshi correlate KXBTCD-... KXETHU-... KXSOL-... --window-days 90
+
+# Build a diversified basket (one HTTP call — universe → cluster cap → corr cap → sizing)
+kalshi basket build --category crypto --min-volume 10000 \
+  -n 8 --max-per-cluster 2 --max-corr 0.6 \
+  --bankroll 1000 --kelly 0.25 \
+  --probs KXBTCD-...:0.62,KXETHU-...:0.58
+
+# "Find me 5 uncorrelated bets on macro themes" — one HTTP call
+kalshi basket build --label fed,cpi,fomc,gdp,jobs \
+  -n 5 --max-per-cluster 1 --max-corr 0.4
+
+# Backtest a basket and read total_return / Sharpe / max DD directly
+kalshi basket backtest --tickers KX-A,KX-B,KX-C --weights 0.4,0.4,0.2 --timeframe 1y
+
+# Kelly-size legs you've already picked
+kalshi basket size --bankroll 1000 --kelly 0.25 --probs KX-A:0.62,KX-B:0.55
+```
 
 ### Backtesting
 
@@ -209,6 +286,10 @@ Every command supports `--json` for structured output, making the bot easy to or
 
 ```bash
 kalshi search crypto --json
+kalshi similar KXBTC-26APR-B95000 --top-k 10 --json
+kalshi clusters --ranked --timeframe 1y --min-return 0.2 --json
+kalshi correlate KX-A KX-B KX-C --window-days 90 --json
+kalshi basket build --category crypto -n 8 --max-per-cluster 2 --max-corr 0.6 --json
 kalshi analyze KXBTC-26APR-B95000 --json
 kalshi buy KXBTC-26APR-B95000 3 58 --json
 kalshi portfolio --json
@@ -261,6 +342,20 @@ fi
 kalshi portfolio --json
 ```
 
+### Server-side basket construction
+
+For agents that want to skip the per-ticker analysis loop, the `basket build` command pushes universe selection, cluster diversification, correlation gating, and Kelly sizing server-side into a single HTTP call:
+
+```bash
+# Pull Octagon's edge ranking, build a diversified 8-leg crypto basket sized for $1000
+EDGE=$(kalshi search edge --category crypto --min-edge 5 --json | jq '.data.data')
+PROBS=$(echo "$EDGE" | jq -r 'map("\(.market_ticker):\(.model_probability/100)") | join(",")')
+
+kalshi basket build --category crypto --min-volume 10000 \
+  -n 8 --max-per-cluster 2 --max-corr 0.6 \
+  --bankroll 1000 --kelly 0.25 --probs "$PROBS" --json
+```
+
 The `watch --theme` command outputs NDJSON (one JSON object per scan cycle), suitable for streaming pipelines.
 
 ## Configuration
@@ -280,7 +375,7 @@ cp env.example ~/.kalshi-bot/.env
 | `KALSHI_API_KEY` | Kalshi API key ID |
 | `KALSHI_PRIVATE_KEY_FILE` | Path to your Kalshi RSA private key PEM file |
 | `OPENAI_API_KEY` | OpenAI API key (default model is GPT-5.4) |
-| `OCTAGON_API_KEY` | Octagon API key for deep research. Get one at [app.octagonai.co](https://app.octagonai.co) |
+| `OCTAGON_API_KEY` | Octagon API key. Powers deep research (`analyze`), edge scanning (`search edge`), and the Octagon-backed discovery + basket commands (`search`, `similar`, `clusters`, `peers`, `correlate`, `basket`). Get one at [app.octagonai.co](https://app.octagonai.co) |
 
 **Optional:**
 
