@@ -40,6 +40,31 @@ describe('parseArgs — integer-only flag validation', () => {
   });
 });
 
+describe('parseArgs — --days-to-close', () => {
+  test('accepts positive integer', () => {
+    const r = parseArgs(['search', 'bitcoin', '--days-to-close', '14']);
+    expect(r.parseErrors).toEqual([]);
+    expect(r.daysToClose).toBe(14);
+  });
+
+  test('rejects decimals', () => {
+    const r = parseArgs(['search', '--days-to-close', '14.5']);
+    expect(r.parseErrors.length).toBe(1);
+    expect(r.parseErrors[0]).toContain('Invalid --days-to-close');
+  });
+
+  test('rejects zero and negative', () => {
+    expect(parseArgs(['search', '--days-to-close', '0']).parseErrors.length).toBe(1);
+    expect(parseArgs(['search', '--days-to-close', '-7']).parseErrors.length).toBe(1);
+  });
+
+  test('--max-dte is an alias', () => {
+    const r = parseArgs(['search', 'bitcoin', '--max-dte', '7']);
+    expect(r.parseErrors).toEqual([]);
+    expect(r.daysToClose).toBe(7);
+  });
+});
+
 describe('parseArgs — sortBy validation', () => {
   test('accepts each valid sortBy', () => {
     for (const val of ['edge_pp', 'expected_return', 'total_volume', 'model_probability', 'volume_24h', 'close_time', 'last_price']) {

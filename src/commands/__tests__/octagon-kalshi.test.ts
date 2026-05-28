@@ -446,6 +446,58 @@ describe('Octagon Kalshi commands', () => {
     expect(buildBody.sizing.leg_probabilities).toEqual({ 'KX-A': 0.62 });
   });
 
+  test('batch analyze: single POST /markets/edge for N tickers', async () => {
+    let edgeBody: any;
+    installFetchMock(async (url, init) => {
+      expect(url).toContain('/markets/edge');
+      edgeBody = JSON.parse((init?.body as string) ?? '{}');
+      return jsonResponse({
+        run_id: 'r1', captured_at: '2026-05-27T00:00:00Z',
+        data: [
+          { input_ticker: 'KX-A', market_ticker: 'KX-A', event_ticker: 'KX-A', title: 'A', series_category: 'X', model_probability: 0.6, market_probability: 0.55, edge_pp: 5, expected_return: 0.09, confidence_score: 7, total_volume: 1000, total_open_interest: 200, status: 'scored', captured_at: 'now' },
+          { input_ticker: 'KX-B', market_ticker: 'KX-B', event_ticker: 'KX-B', title: null, series_category: null, model_probability: null, market_probability: null, edge_pp: null, expected_return: null, confidence_score: null, total_volume: null, total_open_interest: null, status: 'unscored', captured_at: null },
+        ],
+      });
+    });
+    const { handleAnalyzeBatch } = await import('../analyze-batch.js');
+    const resp = await handleAnalyzeBatch(['KX-A', 'KX-B']);
+    expect(resp.ok).toBe(true);
+    if (!resp.ok) return;
+    expect(edgeBody.tickers).toEqual(['KX-A', 'KX-B']);
+    expect(resp.data.scored).toBe(1);
+    expect(resp.data.unscored).toBe(1);
+  });
+
+  test('batch analyze: rejects empty list', async () => {
+    installFetchMock(() => jsonResponse({}));
+    const { handleAnalyzeBatch } = await import('../analyze-batch.js');
+    const resp = await handleAnalyzeBatch([]);
+    expect(resp.ok).toBe(false);
+    if (resp.ok) return;
+    expect(resp.error?.code).toBe('NO_TICKERS');
+  });
+
+  test('batch analyze: rejects > 100 tickers', async () => {
+    installFetchMock(() => jsonResponse({}));
+    const { handleAnalyzeBatch } = await import('../analyze-batch.js');
+    const tickers = Array.from({ length: 101 }, (_, i) => `KX-${i}`);
+    const resp = await handleAnalyzeBatch(tickers);
+    expect(resp.ok).toBe(false);
+    if (resp.ok) return;
+    expect(resp.error?.code).toBe('TOO_MANY_TICKERS');
+  });
+
+  test('batch analyze: dedupes + uppercases', async () => {
+    let edgeBody: any;
+    installFetchMock(async (_url, init) => {
+      edgeBody = JSON.parse((init?.body as string) ?? '{}');
+      return jsonResponse({ run_id: 'r', captured_at: 'now', data: [] });
+    });
+    const { handleAnalyzeBatch } = await import('../analyze-batch.js');
+    await handleAnalyzeBatch(['kx-a', ' KX-A ', 'kx-b']);
+    expect(edgeBody.tickers).toEqual(['KX-A', 'KX-B']);
+  });
+
   test('series KXBTCD uses series_prefix server-side', async () => {
     let calledUrl = '';
     installFetchMock(async (url) => {

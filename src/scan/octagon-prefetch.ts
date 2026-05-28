@@ -49,7 +49,7 @@ function classifyConfidence(absEdge: number): string {
  * Convert an Octagon event entry to local DB records and persist.
  * Returns true if a new record was inserted, false if skipped.
  */
-function persistEvent(db: Database, event: OctagonEventEntry): boolean {
+export function persistEvent(db: Database, event: OctagonEventEntry): boolean {
   const capturedDate = new Date(event.captured_at);
   const closeDate = new Date(event.close_time);
   if (isNaN(capturedDate.getTime()) || isNaN(closeDate.getTime())) return false;
@@ -115,31 +115,50 @@ function persistEvent(db: Database, event: OctagonEventEntry): boolean {
     });
   })();
 
-  // Also persist to edge_history
-  const edge = modelProb - marketProb;
-  try {
-    insertEdge(db, {
-      ticker: event.event_ticker,
-      event_ticker: event.event_ticker,
-      timestamp: capturedAt,
-      model_prob: modelProb,
-      market_prob: marketProb,
-      edge,
-      octagon_report_id: reportId,
-      drivers_json: null,
-      sources_json: null,
-      catalysts_json: null,
-      cache_hit: 1,
-      cache_miss: 0,
-      confidence: classifyConfidence(Math.abs(edge)),
-    });
-  } catch (err) {
-    // Only swallow UNIQUE constraint violations (duplicate ticker+timestamp)
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/UNIQUE constraint failed/i.test(msg)) {
-      // Expected — edge already exists for this ticker+timestamp
-    } else {
-      throw err;
+  // Also persist to edge_history. Two cases:
+  //   - Multi-outcome events (e.g. KXFEDCHAIRNOM-29) ship outcome_probabilities
+  //     with per-market model/market probs. Write one edge_history row per
+  //     outcome with the correct ticker — otherwise downstream consumers see
+  //     the event-level placeholder (typically ~0.5) on every contract.
+  //   - Single-outcome / no-outcome events: fall back to event-level probs on
+  //     a single row keyed by the event ticker, as before.
+  const outcomes = Array.isArray(event.outcome_probabilities) ? event.outcome_probabilities : [];
+  const perOutcomeRows = outcomes.length > 0
+    ? outcomes
+        .filter((o) => o && o.market_ticker && typeof o.model_probability === 'number' && typeof o.market_probability === 'number')
+        .map((o) => ({
+          ticker: o.market_ticker,
+          model_prob: o.model_probability / 100,
+          market_prob: o.market_probability / 100,
+        }))
+    : [{ ticker: event.event_ticker, model_prob: modelProb, market_prob: marketProb }];
+
+  for (const row of perOutcomeRows) {
+    const rowEdge = row.model_prob - row.market_prob;
+    try {
+      insertEdge(db, {
+        ticker: row.ticker,
+        event_ticker: event.event_ticker,
+        timestamp: capturedAt,
+        model_prob: row.model_prob,
+        market_prob: row.market_prob,
+        edge: rowEdge,
+        octagon_report_id: reportId,
+        drivers_json: null,
+        sources_json: null,
+        catalysts_json: null,
+        cache_hit: 1,
+        cache_miss: 0,
+        confidence: classifyConfidence(Math.abs(rowEdge)),
+      });
+    } catch (err) {
+      // Only swallow UNIQUE constraint violations (duplicate ticker+timestamp)
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/UNIQUE constraint failed/i.test(msg)) {
+        // Expected — edge already exists for this ticker+timestamp
+      } else {
+        throw err;
+      }
     }
   }
 

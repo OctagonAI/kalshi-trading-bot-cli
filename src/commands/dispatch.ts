@@ -127,6 +127,15 @@ function maybeEmitBunxHint(args: ParsedArgs): void {
 }
 
 export async function dispatch(args: ParsedArgs): Promise<void> {
+  // --days-to-close N is ergonomic sugar over --close-before <iso>. Resolve
+  // it once here so every downstream command (search, events, series,
+  // catalysts, basket --theme, similar) gets the same filter without each
+  // handler reimplementing the arithmetic.
+  if (args.daysToClose !== undefined && !args.closeBefore) {
+    const target = new Date(Date.now() + args.daysToClose * 86_400_000);
+    args.closeBefore = target.toISOString();
+  }
+
   const { subcommand, json } = args;
   const resolved = resolveAlias(subcommand, args.positionalArgs);
   maybeEmitBunxHint(args);
@@ -343,6 +352,27 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
 
     // ─── analyze ───────────────────────────────────────────────────────
     if (resolved.canonical === 'analyze') {
+      // Batch mode: 2+ positional tickers OR --tickers csv. Routes through
+      // POST /kalshi/markets/edge in a single call (vs. N serial Octagon
+      // round-trips). Use --refresh on a single ticker for the full deep
+      // analysis pipeline.
+      const csvTickers = args.tickers
+        ? args.tickers.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+      const tickerList = [...args.positionalArgs, ...csvTickers];
+      if (tickerList.length > 1) {
+        const { handleAnalyzeBatch, formatAnalyzeBatchHuman } = await import('./analyze-batch.js');
+        const resp = await handleAnalyzeBatch(tickerList);
+        if (json) {
+          console.log(JSON.stringify(resp));
+        } else if (resp.ok) {
+          console.log(formatAnalyzeBatchHuman(resp.data));
+        } else {
+          console.error(resp.error?.message ?? 'analyze (batch) failed');
+        }
+        process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+        return;
+      }
       const ticker = args.positionalArgs[0];
       if (!ticker) {
         const errResp = wrapError('analyze', 'MISSING_TICKER', 'Usage: analyze <ticker> [--refresh] [--report]');

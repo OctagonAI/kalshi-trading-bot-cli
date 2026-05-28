@@ -71,6 +71,7 @@ export interface ParsedArgs {
   sides?: string;          // comma-separated yes/no per ticker for correlate
   cells: boolean;          // include_cell_detail for correlate
   autoProbs: boolean;      // basket size: auto-fetch leg probabilities via markets/edge
+  daysToClose?: number;    // ergonomic shortcut: close_before = now + N days
   parseErrors: string[];
 }
 
@@ -129,6 +130,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let sides: string | undefined;
   let cells = false;
   let autoProbs = false;
+  let daysToClose: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -397,6 +399,13 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       cells = true;
     } else if (arg === '--auto-probs') {
       autoProbs = true;
+    } else if (arg === '--days-to-close' || arg === '--max-dte') {
+      const raw = argv[++i];
+      if (raw != null) {
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric) && Number.isInteger(numeric) && numeric > 0) { daysToClose = numeric; }
+        else { parseErrors.push(`Invalid ${arg} value: "${raw}" (expected a positive integer)`); }
+      } else { parseErrors.push(`${arg} requires a value`); }
     } else if (arg.startsWith('--')) {
       parseErrors.push(`Unknown flag: ${arg}`);
     } else {
@@ -426,7 +435,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     topK, behavioral, ranked, labelContains, closeBefore, windowDays, correlationInterval, timeframe,
     weights, bankroll, kellyMultiplier, n, maxPerCluster, maxCorrelation, minReturn, seriesTicker,
     sortBy, probabilities, tickers, query, showCluster, aggregateBy, activeOnly,
-    seriesPrefix, sides, cells, autoProbs,
+    seriesPrefix, sides, cells, autoProbs, daysToClose,
     parseErrors,
   };
 }
