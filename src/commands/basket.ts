@@ -427,15 +427,17 @@ export function formatBasketSizeHuman(data: BasketSizeResponse): string {
   const lines: string[] = [];
   lines.push(`Kelly sizing — $${data.bankroll_usd.toFixed(2)} bankroll, ${(data.kelly_multiplier * 100).toFixed(0)}% Kelly cap, total notional $${data.total_notional.toFixed(2)}`);
   lines.push('');
+  const num = (v: number | null | undefined, decimals: number, prefix = '', suffix = '') =>
+    v == null || !Number.isFinite(v) ? '--' : `${prefix}${v.toFixed(decimals)}${suffix}`;
   const rows: string[][] = data.legs.map((l) => [
     l.market_ticker,
     l.side.toUpperCase(),
-    l.price.toFixed(2),
-    `${(l.model_probability * 100).toFixed(1)}%`,
-    `${l.edge_pp >= 0 ? '+' : ''}${l.edge_pp.toFixed(1)}pp`,
-    l.kelly_fraction.toFixed(3),
-    l.weight.toFixed(3),
-    `$${l.notional_usd.toFixed(2)}`,
+    num(l.price, 2),
+    num(l.model_probability != null ? l.model_probability * 100 : null, 1, '', '%'),
+    l.edge_pp == null ? '--' : `${l.edge_pp >= 0 ? '+' : ''}${l.edge_pp.toFixed(1)}pp`,
+    num(l.kelly_fraction, 3),
+    num(l.weight, 3),
+    num(l.notional_usd, 2, '$'),
   ]);
   lines.push(formatTable(['Ticker', 'Side', 'Price', 'Model%', 'Edge', 'Kelly', 'Weight', 'Notional'], rows));
   return lines.join('\n');

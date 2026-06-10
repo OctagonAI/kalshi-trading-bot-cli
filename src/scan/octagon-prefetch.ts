@@ -102,7 +102,8 @@ export function persistEvent(db: Database, event: OctagonEventEntry): boolean {
 
     db.prepare(
       `UPDATE octagon_reports SET has_history = $hh, mutually_exclusive = $me, series_category = $sc,
-         confidence_score = $cs, outcome_probabilities_json = $opj, close_time = $ct
+         confidence_score = $cs, outcome_probabilities_json = $opj, close_time = $ct,
+         analysis_last_updated = $alu
        WHERE report_id = $rid`,
     ).run({
       $rid: reportId,
@@ -112,6 +113,7 @@ export function persistEvent(db: Database, event: OctagonEventEntry): boolean {
       $cs: event.confidence_score ?? null,
       $opj: event.outcome_probabilities ? JSON.stringify(event.outcome_probabilities) : null,
       $ct: event.close_time ?? null,
+      $alu: event.analysis_last_updated ?? null,
     });
   })();
 

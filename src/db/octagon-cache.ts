@@ -15,8 +15,9 @@ export interface OctagonReport {
   raw_response?: string | null;
   model_accuracy?: number | null;
   variant_used?: string | null;
-  fetched_at: number;
+  fetched_at: number;            // Unix seconds — when WE pulled this report ("Refreshed")
   expires_at: number;
+  analysis_last_updated?: string | null;  // Octagon's upstream model-run timestamp ("Model run")
 }
 
 export function insertReport(db: Database, report: OctagonReport): void {

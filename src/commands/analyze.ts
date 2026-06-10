@@ -25,7 +25,10 @@ export interface AnalyzeData {
   eventTicker: string;
   title: string;
   expirationTime: string | null;
-  modelLastUpdated: string | null;
+  /** Local timestamp when we last pulled the report from Octagon. */
+  refreshedAt: string | null;
+  /** Upstream Octagon model-run timestamp (Octagon's `analysis_last_updated`). */
+  modelRunAt: string | null;
   modelProb: number;
   marketProb: number;
   edge: number;
@@ -40,6 +43,12 @@ export interface AnalyzeData {
   riskGate: RiskGateResult;
   liquidityGrade: string;
   fromCache: boolean;
+  /**
+   * True when Octagon has no model scoring for this market in the cached report.
+   * When true, model probability + edge fields should be rendered as "--",
+   * not as the 0.5 placeholder.
+   */
+  hasModel: boolean;
   reportAge: string | null;
   reportId: string;
   rawReport: string;
@@ -302,17 +311,32 @@ export async function handleAnalyze(
     risk_gate: gate.passed ? 'PASSED' : 'FAILED',
   });
 
-  // Model last-updated timestamp
-  const modelUpdatedAt = latestDbReport
+  // Two distinct timestamps:
+  //   refreshedAt = our local fetched_at (when WE pulled this from Octagon).
+  //                 This is the "Refreshed" date — what bumps when --refresh runs.
+  //   modelRunAt  = Octagon's analysis_last_updated (when their model last
+  //                 scored this event). Independent of our cache.
+  const refreshedAt = latestDbReport
     ? new Date(latestDbReport.fetched_at * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
     : null;
+  const modelRunAt = latestDbReport?.analysis_last_updated
+    ? latestDbReport.analysis_last_updated.replace('T', ' ').slice(0, 16) + ' UTC'
+    : null;
+
+  // hasModel = Octagon returned a real probability for this market. A
+  // cache-miss report keeps modelProb at the 0.5 placeholder; we must NOT
+  // render that as if it were a real prediction.
+  const hasModel = !report.cacheMiss && Number.isFinite(snapshot.modelProb)
+    && !(snapshot.modelProb === 0.5 && report.drivers.length === 0 && report.catalysts.length === 0);
 
   return {
     ticker: resolvedTicker,
     eventTicker,
     title: market.title || market.subtitle || resolvedTicker,
     expirationTime: market.expiration_time || market.expected_expiration_time || market.close_time || null,
-    modelLastUpdated: modelUpdatedAt,
+    refreshedAt,
+    modelRunAt,
+    hasModel,
     modelProb: snapshot.modelProb,
     marketProb,
     edge: snapshot.edge,
@@ -355,12 +379,23 @@ export function formatAnalyzeHuman(data: AnalyzeData): string {
   }
   lines.push('');
 
-  // Edge & Probabilities
-  lines.push(`  Model Prob:  ${(data.modelProb * 100).toFixed(1)}%`);
-  lines.push(`  Market Prob: ${(data.marketProb * 100).toFixed(1)}%`);
-  lines.push(`  Edge:        ${data.edgePp} (${(data.edge * 100).toFixed(1)}%)`);
-  lines.push(`  Confidence:  ${data.confidence}`);
-  lines.push(`  Mispricing:  ${data.mispricingSignal}`);
+  // Edge & Probabilities.
+  // When Octagon has no model scoring for this market (hasModel=false), render
+  // the model/edge fields as "--" instead of the 0.5 placeholder — otherwise
+  // downstream consumers (bots, dashboards) think we have a 50/50 prediction.
+  if (data.hasModel) {
+    lines.push(`  Model Prob:  ${(data.modelProb * 100).toFixed(1)}%`);
+    lines.push(`  Market Prob: ${(data.marketProb * 100).toFixed(1)}%`);
+    lines.push(`  Edge:        ${data.edgePp} (${(data.edge * 100).toFixed(1)}%)`);
+    lines.push(`  Confidence:  ${data.confidence}`);
+    lines.push(`  Mispricing:  ${data.mispricingSignal}`);
+  } else {
+    lines.push(`  Model Prob:  --   (no Octagon model coverage for this market)`);
+    lines.push(`  Market Prob: ${(data.marketProb * 100).toFixed(1)}%`);
+    lines.push(`  Edge:        --`);
+    lines.push(`  Confidence:  --`);
+    lines.push(`  Mispricing:  --`);
+  }
   lines.push('');
 
   // Price Drivers
@@ -428,15 +463,28 @@ export function formatAnalyzeHuman(data: AnalyzeData): string {
     }
   }
 
-  // Cache status & model timestamp
+  // Two distinct timestamps — keeping them labeled and explicit because users
+  // (and downstream bots) were confused about which one indicates freshness.
+  //
+  //   Refreshed = when WE pulled this report from Octagon. This is the
+  //               freshness indicator. `analyze … --refresh` bumps this.
+  //   Model run = when OCTAGON's model last scored this event. Independent
+  //               of our cache; bumps when Octagon re-runs their analysis.
+  //
+  // If you're a bot/agent reading this output: use **Refreshed** to decide
+  // whether to call --refresh. Model run is purely informational.
   lines.push('');
-  if (data.modelLastUpdated) {
-    lines.push(`  Model Updated: ${data.modelLastUpdated}`);
+  if (data.refreshedAt) {
+    const ageSuffix = data.reportAge ? ` (${data.reportAge})` : '';
+    lines.push(`  Refreshed:   ${data.refreshedAt}${ageSuffix}   ← our local fetch time; bumps on --refresh`);
+  }
+  if (data.modelRunAt) {
+    lines.push(`  Model run:   ${data.modelRunAt}   ← upstream Octagon analysis_last_updated`);
   }
   if (data.fromCache && data.reportAge) {
-    lines.push(`  Data: cached (${data.reportAge}). Run \`analyze ${data.ticker} --refresh\` for latest (costs 3 credits).`);
+    lines.push(`  Data: cached. Run \`analyze ${data.ticker} --refresh\` for the latest report (costs 3 credits).`);
   } else if (data.fromCache) {
-    lines.push(`  Data: cached. Run \`analyze ${data.ticker} --refresh\` for latest (costs 3 credits).`);
+    lines.push(`  Data: cached. Run \`analyze ${data.ticker} --refresh\` for the latest report (costs 3 credits).`);
   } else {
     lines.push('  Data: freshly generated.');
   }

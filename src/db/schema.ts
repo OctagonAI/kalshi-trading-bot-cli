@@ -237,6 +237,11 @@ export function migrate(db: Database): void {
   if (!reportCols.some((c) => c.name === 'close_time')) {
     db.exec(`ALTER TABLE octagon_reports ADD COLUMN close_time TEXT`);
   }
+  // Upstream model-run timestamp (Octagon `analysis_last_updated`). Distinct
+  // from `fetched_at` (when we pulled the report into our local cache).
+  if (!reportCols.some((c) => c.name === 'analysis_last_updated')) {
+    db.exec(`ALTER TABLE octagon_reports ADD COLUMN analysis_last_updated TEXT`);
+  }
 
   const historyCols = db.query(`PRAGMA table_info(octagon_history)`).all() as Array<{ name: string }>;
   if (!historyCols.some((c) => c.name === 'outcome_probabilities_json')) {

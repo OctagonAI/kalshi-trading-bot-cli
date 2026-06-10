@@ -189,12 +189,12 @@ export interface BasketBacktestResponse extends BasketCandlesResponse {
 export interface BasketSizeLeg {
   market_ticker: string;
   side: 'yes' | 'no';
-  model_probability: number;
-  price: number;
-  edge_pp: number;
-  kelly_fraction: number;
-  weight: number;
-  notional_usd: number;
+  model_probability: number | null;
+  price: number | null;
+  edge_pp: number | null;
+  kelly_fraction: number | null;
+  weight: number | null;
+  notional_usd: number | null;
 }
 
 export interface BasketSizeResponse {
