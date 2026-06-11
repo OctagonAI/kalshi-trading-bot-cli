@@ -11,6 +11,7 @@ function base(overrides: Partial<AnalyzeData>): AnalyzeData {
     modelRunAt: '2026-06-09 18:30 UTC',
     staleUpstream: false,
     hasModel: true,
+    hasMarketPrice: true,
     modelProb: 0.72,
     marketProb: 0.58,
     edge: 0.14,
@@ -81,6 +82,35 @@ describe('formatAnalyzeHuman — date label clarity', () => {
   test('explains that --refresh bumps Cache refreshed at', () => {
     const out = formatAnalyzeHuman(base({ fromCache: true }));
     expect(out).toContain('bumps on --refresh');
+  });
+});
+
+describe('formatAnalyzeHuman — no market price', () => {
+  test('shows "--" for market prob + edge and skips Kelly when no last price', () => {
+    const out = formatAnalyzeHuman(base({
+      hasMarketPrice: false, hasModel: true,
+      modelProb: 0.62, marketProb: 0.5,
+    }));
+    expect(out).toContain('Market Prob: --');
+    expect(out).toContain("no last traded price");
+    // Edge must NOT be computed from a placeholder
+    expect(out).toContain('Edge:        --');
+    expect(out).toContain('Confidence:  --');
+    // Model prob still renders since Octagon does have coverage
+    expect(out).toContain('Model Prob:  62.0%');
+    // Kelly block is replaced with a skip message
+    expect(out).toContain('Skipped — market has no last traded price');
+    expect(out).not.toContain('Cash Balance:');
+  });
+
+  test('shows "--" for both Model Prob and Market Prob when neither is available', () => {
+    const out = formatAnalyzeHuman(base({
+      hasMarketPrice: false, hasModel: false,
+      modelProb: 0.5, marketProb: 0.5,
+    }));
+    expect(out).toContain('Model Prob:  --');
+    expect(out).toContain('Market Prob: --');
+    expect(out).toContain('Edge:        --');
   });
 });
 

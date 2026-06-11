@@ -55,6 +55,17 @@ export interface AnalyzeData {
    * not as the 0.5 placeholder.
    */
   hasModel: boolean;
+  /**
+   * True when the Kalshi market has a `last_price` (it has actually traded).
+   * When false, market_prob/edge/Kelly cannot be computed; the formatter
+   * renders "--" for those fields and notes that the report was generated
+   * without a tradeable price reference.
+   *
+   * The Octagon report itself still loads — only the trading-side math is
+   * skipped. This is the common case for newly-listed event-level markets
+   * (e.g. World Cup quarterfinal contracts before the bracket is set).
+   */
+  hasMarketPrice: boolean;
   reportAge: string | null;
   reportId: string;
   rawReport: string;
@@ -168,10 +179,16 @@ export async function handleAnalyze(
   const market = await resolveMarket(ticker);
   const resolvedTicker = market.ticker;
   const eventTicker = market.event_ticker;
-  const marketProb = parseMarketProb(market);
-  if (marketProb === null) {
-    throw new Error(`No last traded price for ${resolvedTicker} — market may have no trades yet.`);
-  }
+  const rawMarketProb = parseMarketProb(market);
+  const hasMarketPrice = rawMarketProb !== null;
+
+  // Many event-level Kalshi tickers exist before any contract has traded
+  // (World Cup brackets, FOMC date ladders, IPO timing — there's no
+  // last_price until someone takes a side). The Octagon report path doesn't
+  // need market_prob — only the edge / Kelly / risk-gate math does. So we
+  // keep going with a neutral fallback and mark hasMarketPrice = false so
+  // the formatter renders "--" for the trading-side fields.
+  const marketProb = hasMarketPrice ? rawMarketProb! : 0.5;
 
   const invoker = createOctagonInvoker();
   const octagonClient = new OctagonClient(invoker, db, auditTrail);
@@ -230,30 +247,37 @@ export async function handleAnalyze(
     confidence: snapshot.confidence,
   });
 
-  // Kelly sizing — wrapped in try/catch for demo mode (portfolio endpoints may 401)
+  // Kelly sizing — wrapped in try/catch for demo mode (portfolio endpoints may 401).
+  // Skip Kelly entirely when there's no last_price: any sizing computed from
+  // a 50% market_prob fallback would be meaningless.
+  const emptyKelly: KellyResult = {
+    side: snapshot.edge >= 0 ? 'yes' : 'no',
+    fraction: 0,
+    adjustedFraction: 0,
+    contracts: 0,
+    dollarAmountCents: 0,
+    entryPriceCents: 0,
+    availableBankroll: 0,
+    openExposure: 0,
+    cashBalance: 0,
+    portfolioValue: 0,
+    liquidityAdjusted: false,
+  };
   let kelly: KellyResult;
-  try {
-    kelly = await kellySize({
-      edge: snapshot.edge,
-      marketProb,
-      market,
-      multiplier: getBotSetting('risk.kelly_multiplier') as number | undefined,
-      minEdgeThreshold: getBotSetting('risk.min_edge_threshold') as number | undefined,
-    });
-  } catch {
-    kelly = {
-      side: snapshot.edge >= 0 ? 'yes' : 'no',
-      fraction: 0,
-      adjustedFraction: 0,
-      contracts: 0,
-      dollarAmountCents: 0,
-      entryPriceCents: 0,
-      availableBankroll: 0,
-      openExposure: 0,
-      cashBalance: 0,
-      portfolioValue: 0,
-      liquidityAdjusted: false,
-    };
+  if (!hasMarketPrice) {
+    kelly = emptyKelly;
+  } else {
+    try {
+      kelly = await kellySize({
+        edge: snapshot.edge,
+        marketProb,
+        market,
+        multiplier: getBotSetting('risk.kelly_multiplier') as number | undefined,
+        minEdgeThreshold: getBotSetting('risk.min_edge_threshold') as number | undefined,
+      });
+    } catch {
+      kelly = { ...emptyKelly };
+    }
   }
 
   // Risk gate
@@ -292,7 +316,10 @@ export async function handleAnalyze(
   const entryPrice = (snapshot.edge > 0 ? yesAsk : noAsk);
 
   let signal: string;
-  if (existingPosition) {
+  if (!hasMarketPrice) {
+    // No tradeable price — no actionable signal. Render explicitly.
+    signal = 'no signal (market has no last traded price)';
+  } else if (existingPosition) {
     const holdDir = existingPosition.direction.toUpperCase();
     const edgeReversed =
       (existingPosition.direction === 'yes' && snapshot.edge < -0.03) ||
@@ -362,6 +389,7 @@ export async function handleAnalyze(
     modelRunAt,
     staleUpstream,
     hasModel,
+    hasMarketPrice,
     modelProb: snapshot.modelProb,
     marketProb,
     edge: snapshot.edge,
@@ -404,19 +432,25 @@ export function formatAnalyzeHuman(data: AnalyzeData): string {
   }
   lines.push('');
 
-  // Edge & Probabilities.
-  // When Octagon has no model scoring for this market (hasModel=false), render
-  // the model/edge fields as "--" instead of the 0.5 placeholder — otherwise
-  // downstream consumers (bots, dashboards) think we have a 50/50 prediction.
-  if (data.hasModel) {
-    lines.push(`  Model Prob:  ${(data.modelProb * 100).toFixed(1)}%`);
-    lines.push(`  Market Prob: ${(data.marketProb * 100).toFixed(1)}%`);
+  // Edge & Probabilities. Two independent reasons a field may be unavailable:
+  //   hasModel=false       → Octagon has no model scoring → Model Prob shows "--"
+  //   hasMarketPrice=false → Kalshi market has no last_price → Market Prob shows "--"
+  // Edge needs both. Either being false means edge/confidence/mispricing
+  // render "--" — we never show a number derived from a placeholder.
+  const modelStr = data.hasModel
+    ? `${(data.modelProb * 100).toFixed(1)}%`
+    : `--   (no Octagon model coverage for this market)`;
+  const marketStr = data.hasMarketPrice
+    ? `${(data.marketProb * 100).toFixed(1)}%`
+    : `--   (no last traded price — market hasn't traded yet)`;
+  const canComputeEdge = data.hasModel && data.hasMarketPrice;
+  lines.push(`  Model Prob:  ${modelStr}`);
+  lines.push(`  Market Prob: ${marketStr}`);
+  if (canComputeEdge) {
     lines.push(`  Edge:        ${data.edgePp} (${(data.edge * 100).toFixed(1)}%)`);
     lines.push(`  Confidence:  ${data.confidence}`);
     lines.push(`  Mispricing:  ${data.mispricingSignal}`);
   } else {
-    lines.push(`  Model Prob:  --   (no Octagon model coverage for this market)`);
-    lines.push(`  Market Prob: ${(data.marketProb * 100).toFixed(1)}%`);
     lines.push(`  Edge:        --`);
     lines.push(`  Confidence:  --`);
     lines.push(`  Mispricing:  --`);
@@ -449,22 +483,26 @@ export function formatAnalyzeHuman(data: AnalyzeData): string {
     lines.push('');
   }
 
-  // Kelly Sizing
+  // Position Sizing — only meaningful when there's a tradeable price.
   lines.push('  Position Sizing (Half-Kelly):');
-  lines.push(`    Side:         ${data.kelly.side.toUpperCase()}`);
-  lines.push(`    Cash Balance: $${(data.kelly.cashBalance / 100).toFixed(2)}`);
-  lines.push(`    Open Exposure: $${(data.kelly.openExposure / 100).toFixed(2)}`);
-  lines.push(`    Available:    $${(data.kelly.availableBankroll / 100).toFixed(2)}`);
-  lines.push(`    Contracts:    ${data.kelly.contracts}`);
-  lines.push(`    Dollar Amount: $${(data.kelly.dollarAmountCents / 100).toFixed(2)}`);
-  lines.push(`    Entry Price:  ${data.kelly.entryPriceCents}¢`);
-  lines.push(`    Kelly f*:     ${(data.kelly.fraction * 100).toFixed(1)}%`);
-  lines.push(`    Adjusted f:   ${(data.kelly.adjustedFraction * 100).toFixed(1)}%`);
-  if (data.kelly.liquidityAdjusted) {
-    lines.push('    ⚠ Liquidity-adjusted (wide spread or low volume)');
-  }
-  if (data.kelly.skippedReason) {
-    lines.push(`    ⚠ ${data.kelly.skippedReason}`);
+  if (!data.hasMarketPrice) {
+    lines.push('    ⚠ Skipped — market has no last traded price; no sizing reference available.');
+  } else {
+    lines.push(`    Side:         ${data.kelly.side.toUpperCase()}`);
+    lines.push(`    Cash Balance: $${(data.kelly.cashBalance / 100).toFixed(2)}`);
+    lines.push(`    Open Exposure: $${(data.kelly.openExposure / 100).toFixed(2)}`);
+    lines.push(`    Available:    $${(data.kelly.availableBankroll / 100).toFixed(2)}`);
+    lines.push(`    Contracts:    ${data.kelly.contracts}`);
+    lines.push(`    Dollar Amount: $${(data.kelly.dollarAmountCents / 100).toFixed(2)}`);
+    lines.push(`    Entry Price:  ${data.kelly.entryPriceCents}¢`);
+    lines.push(`    Kelly f*:     ${(data.kelly.fraction * 100).toFixed(1)}%`);
+    lines.push(`    Adjusted f:   ${(data.kelly.adjustedFraction * 100).toFixed(1)}%`);
+    if (data.kelly.liquidityAdjusted) {
+      lines.push('    ⚠ Liquidity-adjusted (wide spread or low volume)');
+    }
+    if (data.kelly.skippedReason) {
+      lines.push(`    ⚠ ${data.kelly.skippedReason}`);
+    }
   }
   lines.push('');
 
