@@ -415,10 +415,28 @@ export class OctagonClient {
   }
 
   private extractFromMarkdown(raw: string, defaults: OctagonReport): OctagonReport {
+    // For multi-outcome reports (World Cup Silver Ball, FOMC ladders, IPO
+    // event trees), the per-outcome probabilities live in markdown tables
+    // like:
+    //   | Player       | Market % | Model % |
+    //   |--------------|----------|---------|
+    //   | Harry Kane   | 35.0%    | 36.0%   |
+    //   | Lionel Messi | 29.0%    | 40.1%   |
+    // The simple key:value regex below misses these and leaves the
+    // 0.5/0.5 placeholder. Try table extraction first, matching against the
+    // outcome suffix of the ticker (e.g. KXWCAWARD-26SBALL-HKANE → Kane).
+    let modelProb = this.extractProbFromMarkdownTable(raw, defaults.ticker, 'model');
+    let marketProb = this.extractProbFromMarkdownTable(raw, defaults.ticker, 'market');
+    if (modelProb === null) {
+      modelProb = this.extractProb(raw, /model\s*(?:prob(?:ability)?|estimate)\s*[:=]\s*([\d.]+%?)/i);
+    }
+    if (marketProb === null) {
+      marketProb = this.extractProb(raw, /market\s*(?:prob(?:ability)?|price)\s*[:=]\s*([\d.]+%?)/i);
+    }
     return {
       ...defaults,
-      modelProb: this.extractProb(raw, /model\s*(?:prob(?:ability)?|estimate)\s*[:=]\s*([\d.]+%?)/i) ?? defaults.modelProb,
-      marketProb: this.extractProb(raw, /market\s*(?:prob(?:ability)?|price)\s*[:=]\s*([\d.]+%?)/i) ?? defaults.marketProb,
+      modelProb: modelProb ?? defaults.modelProb,
+      marketProb: marketProb ?? defaults.marketProb,
       mispricingSignal: this.extractSignal(raw) ?? defaults.mispricingSignal,
       drivers: this.extractDrivers(raw),
       catalysts: this.extractCatalysts(raw),
@@ -426,6 +444,109 @@ export class OctagonClient {
       resolutionHistory: this.extractSection(raw, /##?\s*resolution\s*history/i) ?? defaults.resolutionHistory,
       contractSnapshot: this.extractSection(raw, /##?\s*contract\s*snapshot/i) ?? defaults.contractSnapshot,
     };
+  }
+
+  /**
+   * Parse markdown tables in `raw` looking for a Model/Market % grid, then
+   * find the row matching `ticker`'s outcome suffix and return that row's
+   * `kind` (model | market) probability as a 0-1 fraction. Returns null when
+   * no table is found, no row matches, or the percentage can't be parsed.
+   *
+   * Matching strategy: the outcome suffix is whatever follows the last `-`
+   * in the ticker (e.g. KXWCAWARD-26SBALL-HKANE → "HKANE"). We compare it
+   * against each row's first cell (the name) by stripping non-letters and
+   * checking if either string contains the other (case-insensitive). This
+   * handles the common patterns: initial+lastname ("HKANE" ⊆ "harrykane"),
+   * country abbreviations ("MEX" ⊆ "mexico"), full names, etc.
+   *
+   * If multiple rows match we pick the strongest (longest overlap) to keep
+   * abbreviations like "MEX" from accidentally matching "MEXICO CITY".
+   */
+  private extractProbFromMarkdownTable(
+    raw: string,
+    ticker: string,
+    kind: 'model' | 'market',
+  ): number | null {
+    const suffix = ticker.split('-').pop()?.toUpperCase() ?? '';
+    if (!suffix || suffix.length < 2) return null;
+    const tickerKey = suffix.replace(/[^A-Z0-9]/g, '');
+
+    // Split into possible table blocks. Each block is a contiguous run of
+    // lines that start with `|`. A real table has >=3 lines (header, sep,
+    // body), at least 3 columns, and at least two columns whose values are
+    // percentages.
+    const lines = raw.split('\n');
+    const blocks: string[][] = [];
+    let cur: string[] = [];
+    for (const line of lines) {
+      if (line.trim().startsWith('|')) {
+        cur.push(line);
+      } else {
+        if (cur.length > 0) blocks.push(cur);
+        cur = [];
+      }
+    }
+    if (cur.length > 0) blocks.push(cur);
+
+    const parseCells = (line: string): string[] =>
+      line.split('|').slice(1, -1).map((c) => c.trim());
+    const isPercent = (s: string): boolean => /^-?\d+(\.\d+)?%?$/.test(s.replace(/[,$]/g, ''));
+    const parsePercent = (s: string): number | null => {
+      const cleaned = s.replace(/[%,$\s]/g, '');
+      const n = parseFloat(cleaned);
+      if (!Number.isFinite(n)) return null;
+      return n > 1 ? n / 100 : n;
+    };
+
+    let bestMatch: { score: number; value: number } | null = null;
+    for (const block of blocks) {
+      if (block.length < 3) continue;
+      const header = parseCells(block[0]).map((c) => c.toLowerCase());
+      // Find target column. Accept "model", "model %", "model prob", etc.
+      const targetCol = header.findIndex((c) =>
+        kind === 'model'
+          ? /\bmodel\b/.test(c)
+          : /\b(market|mkt|kalshi)\b/.test(c) && !/cap/.test(c),  // avoid "market cap"
+      );
+      if (targetCol < 0) continue;
+
+      // Body starts after the separator row (line index 2). Skip rows whose
+      // cells don't look like data (e.g. another separator).
+      for (let i = 2; i < block.length; i++) {
+        const cells = parseCells(block[i]);
+        if (cells.length <= targetCol) continue;
+        const cell = cells[targetCol];
+        if (!isPercent(cell)) continue;
+        const name = (cells[0] ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!name) continue;
+        // Match strategies (try in order, take strongest):
+        //   1. ticker fully inside row name ("MEX" in "MEXICO")
+        //   2. row name fully inside ticker ("MESSI" in "LIONELMESSI")
+        //   3. ticker suffix without leading initial(s) inside row name
+        //      ("HKANE" → "KANE" in "HARRYKANE", "LMESSI" → "MESSI" in
+        //      "LIONELMESSI"). Common Kalshi convention is one or two
+        //      initials + lastname, so we strip up to 2 leading chars.
+        let score = 0;
+        if (name.includes(tickerKey)) score = tickerKey.length;
+        else if (tickerKey.includes(name)) score = name.length;
+        else {
+          for (let drop = 1; drop <= Math.min(2, tickerKey.length - 3); drop++) {
+            const trimmed = tickerKey.slice(drop);
+            if (trimmed.length >= 3 && name.includes(trimmed)) {
+              score = Math.max(score, trimmed.length);
+              break;
+            }
+          }
+        }
+        if (score === 0) continue;
+        const v = parsePercent(cell);
+        if (v === null) continue;
+        if (!bestMatch || score > bestMatch.score) {
+          bestMatch = { score, value: v };
+        }
+      }
+    }
+    return bestMatch?.value ?? null;
   }
 
   private inferSignal(modelProb: number | null, marketProb: number | null): MispricingSignal | null {

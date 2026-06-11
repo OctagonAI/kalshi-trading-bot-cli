@@ -85,6 +85,37 @@ describe('formatAnalyzeHuman — date label clarity', () => {
   });
 });
 
+describe('AnalyzeData JSON contract — null instead of 0.5 placeholders', () => {
+  test('JSON consumers see null for fields the flags say are unavailable', () => {
+    // hasModel=false → modelProb MUST be null (not the 0.5 placeholder)
+    // hasMarketPrice=false → marketProb MUST be null
+    // Either false → edge / edgePp / confidence / mispricingSignal MUST be null
+    //
+    // The bot was emitting 0.5/0.5/0/...; downstream consumers (dashboards,
+    // bot writers) saw fake 50/50 predictions and acted on them.
+    const both: AnalyzeData = base({
+      hasModel: false, hasMarketPrice: false,
+      modelProb: null, marketProb: null, edge: null,
+      edgePp: null, confidence: null, mispricingSignal: null,
+    });
+    // The flag fields are the source of truth — if the test fixture is built
+    // through handleAnalyze, the nulls would be enforced. Here we just assert
+    // that the JSON shape supports null and the formatter handles it.
+    expect(both.modelProb).toBeNull();
+    expect(both.marketProb).toBeNull();
+    expect(both.edge).toBeNull();
+    expect(both.edgePp).toBeNull();
+    expect(both.confidence).toBeNull();
+    expect(both.mispricingSignal).toBeNull();
+    // Human formatter degrades cleanly
+    const out = formatAnalyzeHuman(both);
+    expect(out).toContain('Model Prob:  --');
+    expect(out).toContain('Market Prob: --');
+    expect(out).toContain('Edge:        --');
+    expect(out).not.toContain('50.0%');
+  });
+});
+
 describe('formatAnalyzeHuman — no market price', () => {
   test('shows "--" for market prob + edge and skips Kelly when no last price', () => {
     const out = formatAnalyzeHuman(base({

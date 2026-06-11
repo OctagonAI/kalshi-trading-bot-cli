@@ -10,9 +10,12 @@ export interface PositionReview {
   direction: 'yes' | 'no';
   size: number;
   entryPrice: number | null;
-  currentMarketProb: number;
-  modelProb: number;
-  edge: number;
+  /** null when analyze couldn't read a last_price for the market. */
+  currentMarketProb: number | null;
+  /** null when Octagon has no model coverage for the market. */
+  modelProb: number | null;
+  /** null when either currentMarketProb or modelProb is null. */
+  edge: number | null;
   signal: 'HOLD' | 'SELL';
   sellSide: 'yes' | 'no';
   closePriceCents: number;
@@ -62,9 +65,9 @@ export async function reviewPortfolio(): Promise<PositionReview[]> {
         direction,
         size,
         entryPrice: null,
-        currentMarketProb: 0,
-        modelProb: 0,
-        edge: 0,
+        currentMarketProb: null,
+        modelProb: null,
+        edge: null,
         signal: 'HOLD' as const,
         sellSide: direction,
         closePriceCents: 0,
@@ -74,13 +77,20 @@ export async function reviewPortfolio(): Promise<PositionReview[]> {
     }
 
     const analysis: AnalyzeData = result.value;
-    const { edge, marketProb, modelProb, kelly } = analysis;
+    const { marketProb, modelProb, kelly } = analysis;
 
-    // Determine if edge has reversed against our position
+    // Determine if edge has reversed against our position.
+    // When edge is null (no model coverage or no last_price), we can't make
+    // a quantitative call — hold and surface the data gap as the reason.
     let signal: 'HOLD' | 'SELL' = 'HOLD';
     let reason = '';
+    const edge = analysis.edge;
 
-    if (direction === 'yes' && edge < -SELL_THRESHOLD) {
+    if (edge == null) {
+      reason = !analysis.hasModel
+        ? 'No Octagon model coverage — cannot evaluate edge for this position'
+        : 'No last traded price — cannot evaluate edge for this position';
+    } else if (direction === 'yes' && edge < -SELL_THRESHOLD) {
       signal = 'SELL';
       reason = `Edge reversed: model now favors NO by ${Math.abs(edge * 100).toFixed(0)}pp`;
     } else if (direction === 'no' && edge > SELL_THRESHOLD) {
@@ -97,15 +107,13 @@ export async function reviewPortfolio(): Promise<PositionReview[]> {
     }
 
     // Use the bid-derived close price from handleAnalyze when available,
-    // fall back to marketProb approximation only if missing
+    // fall back to marketProb approximation only if both are present
     const closePriceCents =
       analysis.closePriceCents && analysis.closePriceCents > 0
         ? analysis.closePriceCents
-        : Math.round(
-            direction === 'yes'
-              ? marketProb * 100 - 1
-              : (1 - marketProb) * 100 - 1
-          );
+        : marketProb != null
+          ? Math.round(direction === 'yes' ? marketProb * 100 - 1 : (1 - marketProb) * 100 - 1)
+          : 0;
 
     return {
       ticker: pos.ticker,
@@ -140,10 +148,13 @@ export function formatReviewHuman(reviews: PositionReview[]): string {
   lines.push(`  ${reviews.length} position${reviews.length === 1 ? '' : 's'} analyzed  |  ${sells.length} SELL signal${sells.length === 1 ? '' : 's'}  |  ${holds.length} HOLD`);
   lines.push('');
 
+  const edgePpStr = (edge: number | null): string =>
+    edge == null ? '--' : `${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(0)}pp`;
+
   // Show SELL signals first
   for (const r of sells) {
     const dirLabel = r.direction.toUpperCase();
-    const edgePp = `${r.edge >= 0 ? '+' : ''}${(r.edge * 100).toFixed(0)}pp`;
+    const edgePp = edgePpStr(r.edge);
     lines.push(`  ⚠  ${r.ticker}  ${dirLabel} ×${r.size}`);
     lines.push(`     Edge: ${edgePp}  |  ${r.reason}`);
     lines.push(`     → SELL ${dirLabel} @ ${r.closePriceCents}¢`);
@@ -157,7 +168,7 @@ export function formatReviewHuman(reviews: PositionReview[]): string {
   // Show HOLD positions
   for (const r of holds) {
     const dirLabel = r.direction.toUpperCase();
-    const edgePp = `${r.edge >= 0 ? '+' : ''}${(r.edge * 100).toFixed(0)}pp`;
+    const edgePp = edgePpStr(r.edge);
     lines.push(`  ✓  ${r.ticker}  ${dirLabel} ×${r.size}`);
     lines.push(`     Edge: ${edgePp}  |  ${r.reason}`);
     if (r.analyzeError) {

@@ -152,6 +152,60 @@ describe('OctagonClient', () => {
       expect(report.contractSnapshot).toContain('$0.65');
     });
 
+    test('parses per-outcome probability from markdown table (Silver Ball / Kane regression)', () => {
+      // Reproduces the KXWCAWARD-26SBALL-HKANE bug: the markdown body
+      // ships per-outcome rows in a table; the simple key:value regex
+      // misses them and the parser falls back to 0.5/0.5. The new table
+      // extractor matches the suffix (HKANE) against row names (Harry Kane).
+      const markdown = [
+        '# Silver Ball outcomes',
+        '',
+        '| Player        | Market % | Model % |',
+        '|---------------|----------|---------|',
+        '| Harry Kane    | 35.0%    | 36.0%   |',
+        '| Lionel Messi  | 29.0%    | 40.1%   |',
+        '| Kylian Mbappé | 18.0%    | 12.5%   |',
+        '',
+        '## Drivers',
+        '- Goal-scoring form in qualifiers',
+      ].join('\n');
+      const client = new OctagonClient(makeInvoker(''), db, audit);
+      const report = client.parseReport(markdown, 'KXWCAWARD-26SBALL-HKANE', 'KXWCAWARD-26SBALL', 'cache');
+      expect(report.modelProb).toBeCloseTo(0.36, 3);
+      expect(report.marketProb).toBeCloseTo(0.35, 3);
+      // Sanity: not the 0.5/0.5 placeholder
+      expect(report.modelProb).not.toBe(0.5);
+      expect(report.marketProb).not.toBe(0.5);
+    });
+
+    test('table parser picks the right row for a different outcome (Messi)', () => {
+      const markdown = [
+        '| Player        | Market % | Model % |',
+        '|---------------|----------|---------|',
+        '| Harry Kane    | 35.0%    | 36.0%   |',
+        '| Lionel Messi  | 29.0%    | 40.1%   |',
+      ].join('\n');
+      const client = new OctagonClient(makeInvoker(''), db, audit);
+      const report = client.parseReport(markdown, 'KXWCAWARD-26SBALL-LMESSI', 'KXWCAWARD-26SBALL', 'cache');
+      expect(report.modelProb).toBeCloseTo(0.401, 3);
+      expect(report.marketProb).toBeCloseTo(0.29, 3);
+    });
+
+    test('table parser falls back to defaults when no row matches', () => {
+      const markdown = [
+        '| Player        | Market % | Model % |',
+        '|---------------|----------|---------|',
+        '| Harry Kane    | 35.0%    | 36.0%   |',
+      ].join('\n');
+      const client = new OctagonClient(makeInvoker(''), db, audit);
+      const report = client.parseReport(markdown, 'KXWCAWARD-26SBALL-UNKNOWN', 'KXWCAWARD-26SBALL', 'cache');
+      // No match → falls back to defaults (0.5)
+      expect(report.modelProb).toBe(0.5);
+      expect(report.marketProb).toBe(0.5);
+      // And cacheMiss should be flagged
+      expect(report.cacheMiss).toBe(true);
+    });
+
     test('returns sensible defaults for minimal/malformed input', () => {
       const client = new OctagonClient(makeInvoker(''), db, audit);
       const report = client.parseReport(MINIMAL_RESPONSE, 'BAD-TICKER', 'EVENT-X', 'default');

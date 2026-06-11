@@ -35,12 +35,25 @@ export interface AnalyzeData {
    * cache time but didn't get a newer underlying report from Octagon.
    */
   staleUpstream: boolean;
-  modelProb: number;
-  marketProb: number;
-  edge: number;
-  edgePp: string;
-  confidence: string;
-  mispricingSignal: string;
+  /**
+   * Octagon's model probability for this market. null when hasModel is
+   * false — we deliberately do NOT emit the 0.5 placeholder fallback to
+   * JSON consumers. Always check hasModel before reading this field.
+   */
+  modelProb: number | null;
+  /**
+   * Last traded market probability. null when hasMarketPrice is false.
+   * Always check hasMarketPrice before reading.
+   */
+  marketProb: number | null;
+  /** modelProb − marketProb. null when either input is unavailable. */
+  edge: number | null;
+  /** Pretty-printed edge ("+14pp"). null when edge is null. */
+  edgePp: string | null;
+  /** "very_high" | "high" | "moderate" | "low" — null when edge is null. */
+  confidence: string | null;
+  /** "underpriced" | "overpriced" | "fair_value" — null when edge is null. */
+  mispricingSignal: string | null;
   signal: string;
   drivers: PriceDriver[];
   catalysts: Catalyst[];
@@ -380,6 +393,11 @@ export async function handleAnalyze(
     && latestDbReport?.analysis_last_updated != null
     && preRefreshAnalysis === latestDbReport.analysis_last_updated;
 
+  // Null out trading-side fields when the underlying inputs are unavailable.
+  // JSON consumers previously saw modelProb: 0.5 / marketProb: 0.5 / edge: 0
+  // on degraded paths and treated them as real predictions. The hasModel and
+  // hasMarketPrice flags are the source of truth — fields here mirror them.
+  const canComputeEdge = hasModel && hasMarketPrice;
   return {
     ticker: resolvedTicker,
     eventTicker,
@@ -390,12 +408,12 @@ export async function handleAnalyze(
     staleUpstream,
     hasModel,
     hasMarketPrice,
-    modelProb: snapshot.modelProb,
-    marketProb,
-    edge: snapshot.edge,
-    edgePp,
-    confidence: snapshot.confidence,
-    mispricingSignal,
+    modelProb: hasModel ? snapshot.modelProb : null,
+    marketProb: hasMarketPrice ? marketProb : null,
+    edge: canComputeEdge ? snapshot.edge : null,
+    edgePp: canComputeEdge ? edgePp : null,
+    confidence: canComputeEdge ? snapshot.confidence : null,
+    mispricingSignal: canComputeEdge ? mispricingSignal : null,
     signal,
     drivers: snapshot.drivers,
     catalysts: snapshot.catalysts,
@@ -437,17 +455,17 @@ export function formatAnalyzeHuman(data: AnalyzeData): string {
   //   hasMarketPrice=false → Kalshi market has no last_price → Market Prob shows "--"
   // Edge needs both. Either being false means edge/confidence/mispricing
   // render "--" — we never show a number derived from a placeholder.
-  const modelStr = data.hasModel
+  const modelStr = data.hasModel && data.modelProb != null
     ? `${(data.modelProb * 100).toFixed(1)}%`
     : `--   (no Octagon model coverage for this market)`;
-  const marketStr = data.hasMarketPrice
+  const marketStr = data.hasMarketPrice && data.marketProb != null
     ? `${(data.marketProb * 100).toFixed(1)}%`
     : `--   (no last traded price — market hasn't traded yet)`;
-  const canComputeEdge = data.hasModel && data.hasMarketPrice;
+  const canComputeEdge = data.hasModel && data.hasMarketPrice && data.edge != null;
   lines.push(`  Model Prob:  ${modelStr}`);
   lines.push(`  Market Prob: ${marketStr}`);
   if (canComputeEdge) {
-    lines.push(`  Edge:        ${data.edgePp} (${(data.edge * 100).toFixed(1)}%)`);
+    lines.push(`  Edge:        ${data.edgePp} (${(data.edge! * 100).toFixed(1)}%)`);
     lines.push(`  Confidence:  ${data.confidence}`);
     lines.push(`  Mispricing:  ${data.mispricingSignal}`);
   } else {
@@ -624,8 +642,12 @@ export async function promptAnalyzeActions(data: AnalyzeData): Promise<void> {
           // Close position: sell what we hold
           const sellSide = data.existingPosition.direction;
           const sellSize = data.existingPosition.size;
+          // marketProb is guaranteed when isSell is reachable (we got a SELL
+          // recommendation, which requires a price), but type system can't
+          // see that — fall back to 50 if data was tampered with.
+          const mp = data.marketProb ?? 0.5;
           const closePrice = data.closePriceCents ?? Math.round(
-            (sellSide === 'yes' ? data.marketProb : 1 - data.marketProb) * 100
+            (sellSide === 'yes' ? mp : 1 - mp) * 100
           );
 
           console.log(`  Signal: SELL ${sellSize} ${sellSide.toUpperCase()} @ ${closePrice}¢ (close position)`);
@@ -701,7 +723,7 @@ export async function promptAnalyzeActions(data: AnalyzeData): Promise<void> {
           break;
         }
 
-        const side = data.edge > 0 ? 'yes' : 'no';
+        const side = (data.edge ?? 0) > 0 ? 'yes' : 'no';
         const price = data.kelly.entryPriceCents;
         console.log(`  Signal: BUY ${data.kelly.contracts} ${side.toUpperCase()} @ ${price}¢`);
         const confirm = await ask('  Execute? [y/n] ');

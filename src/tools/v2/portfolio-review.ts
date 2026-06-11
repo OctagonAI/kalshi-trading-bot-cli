@@ -27,7 +27,7 @@ export const portfolioReviewTool = new DynamicStructuredTool({
         direction: r.direction,
         size: r.size,
         edge: r.edge,
-        edgePp: `${r.edge >= 0 ? '+' : ''}${(r.edge * 100).toFixed(0)}pp`,
+        edgePp: r.edge == null ? null : `${r.edge >= 0 ? '+' : ''}${(r.edge * 100).toFixed(0)}pp`,
         signal: r.signal,
         reason: r.reason,
         closePriceCents: r.closePriceCents,
