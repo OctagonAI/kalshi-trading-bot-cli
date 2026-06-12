@@ -20,7 +20,12 @@ export interface ScoredSignal {
   market_then: number;        // 0-100 (Kalshi trading price N days ago, from Octagon snapshot)
   market_now: number;         // 0-100 (settlement for resolved, current price for unresolved)
   resolved: boolean;
-  edge_pp: number;            // model_prob - market_then
+  /**
+   * Raw, unrounded edge in percentage points: model_prob − market_then.
+   * Filtering on |edge| should always use this value; display layers
+   * round to 0.1pp or 1pp as appropriate.
+   */
+  edge_pp: number;
   pnl: number;               // computed P&L for this signal ($ per $1 face value)
   capital: number;           // $ capital deployed per $1 face value: kp/100 for YES edges, (100-kp)/100 for NO edges
   edge_bucket: string;        // absolute-edge bucket label e.g. "0-5%", "5-10%", ..., "90%+"

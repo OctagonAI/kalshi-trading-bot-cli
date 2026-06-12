@@ -133,7 +133,11 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
             const marketThen = perMarket.market_probability;
             if (!Number.isFinite(modelProb) || !Number.isFinite(marketThen)) continue;
             const marketNow = m.result === 'yes' ? 100 : 0;
-            const edgePp = Math.round((modelProb - marketThen) * 10) / 10;
+            // Unrounded edge — filtering happens downstream against the
+            // raw value. Display layer rounds for presentation. Rounding
+            // here makes the minEdge filter asymmetric (0.449 rounds to 0.4
+            // and is excluded; 0.451 rounds to 0.5 and is included).
+            const edgePp = modelProb - marketThen;
 
             // Tradeable filter — per-contract volume from the Octagon
             // snapshot only (no Kalshi lifetime-volume fallback, which would
@@ -156,8 +160,13 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
               pnl = (marketThen - marketNow) / 100;
               capital = (100 - marketThen) / 100;
             } else {
-              // Zero edge: capital still reflects the tradeable side implied by sign
-              // (use YES side so divide-by-zero checks don't fire on 0-edge signals).
+              // Zero edge: model and market agree exactly. Such signals are
+              // excluded from edge metrics (metrics.ts filters edge_pp != 0
+              // && |edge_pp| >= minEdgePp) but kept in `signals` so the CSV
+              // export retains a complete picture of what was scored. We
+              // assign YES-side capital so divide-by-zero checks don't fire
+              // — the capital field is consulted only when computing ROI on
+              // the edge subset, where these rows aren't present.
               capital = marketThen / 100;
             }
             if (capital <= 0) continue;
@@ -226,7 +235,8 @@ export async function handleBacktest(args: ParsedArgs): Promise<CLIResponse<Back
           const confidenceScore = snap.confidence_score ?? 0;
 
           const marketNow = m.market_prob * 100; // current Kalshi price (0-100)
-          const edgePp = Math.round((modelProb - marketThen) * 10) / 10;
+          // Unrounded edge — see resolved-leg comment above.
+          const edgePp = modelProb - marketThen;
 
           // Tradeable filter — per-contract volume from the Octagon snapshot
           // only (no Kalshi lifetime-volume fallback, see contractVolume).

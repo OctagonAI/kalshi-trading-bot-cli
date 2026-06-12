@@ -101,6 +101,34 @@ describe('computeBaselines — null strategies on the same universe', () => {
   });
 });
 
+describe('Edge filter — unrounded |edge| (Issue 8)', () => {
+  test('signal with unrounded edge_pp = 0.45 is EXCLUDED when minEdgePp = 0.5', () => {
+    // Before the fix: 0.45 → rounded to 0.5 (≥ 0.5) → INCLUDED.
+    // After the fix:  0.45 stays 0.45, < 0.5, → EXCLUDED.
+    const s: ScoredSignal[] = [
+      signal({ market_ticker: 'A', edge_pp: 0.45, resolved: true, market_then: 50, market_now: 100, pnl: 0.5, capital: 0.5 }),
+    ];
+    const m = computeMetrics(s, 0.5);
+    expect(m.edge_signals).toBe(0);
+  });
+
+  test('signal with unrounded edge_pp = 0.55 is INCLUDED when minEdgePp = 0.5', () => {
+    const s: ScoredSignal[] = [
+      signal({ market_ticker: 'A', edge_pp: 0.55, resolved: true, market_then: 50, market_now: 100, pnl: 0.5, capital: 0.5 }),
+    ];
+    const m = computeMetrics(s, 0.5);
+    expect(m.edge_signals).toBe(1);
+  });
+
+  test('edge_pp = 0 is always excluded from edge metrics', () => {
+    const s: ScoredSignal[] = [
+      signal({ market_ticker: 'A', edge_pp: 0, resolved: true, market_then: 50, market_now: 50, pnl: 0, capital: 0.5 }),
+    ];
+    const m = computeMetrics(s, 0);
+    expect(m.edge_signals).toBe(0);
+  });
+});
+
 describe('LegMetrics — resolved vs unresolved split (Issue 3)', () => {
   test('resolved_metrics covers only resolved signals; unresolved_metrics only unresolved', () => {
     const sigs: ScoredSignal[] = [
