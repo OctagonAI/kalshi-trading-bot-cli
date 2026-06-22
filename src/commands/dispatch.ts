@@ -34,6 +34,7 @@ import { handleBasket, formatBasketHuman } from './basket.js';
 import { searchKalshiMarkets, getMarketsWithEdge } from '../scan/octagon-kalshi-api.js';
 import { formatMarketSearchHuman, formatMarketsWithEdgeHuman } from './search-remote.js';
 import { handleEvents, formatEventsHuman } from './events.js';
+import { handleTrust, formatTrustHuman } from './trust.js';
 import { handleSeries, formatSeriesHuman } from './series.js';
 import { handleEditorialThemes, formatEditorialThemesHuman } from './editorial-themes.js';
 import { handleCatalysts, formatCatalystsHuman } from './catalysts.js';
@@ -494,6 +495,20 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         console.log(formatSeriesHuman(resp.data));
       } else {
         console.error(resp.error?.message ?? 'series failed');
+      }
+      process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
+      return;
+    }
+
+    // ─── trust (Trader Trust scorecard) ────────────────────────────────
+    if (resolved.canonical === 'trust') {
+      const resp = await handleTrust(args);
+      if (json) {
+        console.log(JSON.stringify(resp));
+      } else if (resp.ok) {
+        console.log(formatTrustHuman(resp.data));
+      } else {
+        console.error(resp.error?.message ?? 'trust failed');
       }
       process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
       return;

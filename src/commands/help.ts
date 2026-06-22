@@ -249,6 +249,36 @@ Flags:
 
 Output ranks pairs ascending by correlation — most-uncorrelated first.`,
 
+    trust: `**${p}trust** — Trader Trust scorecard (market-integrity metrics)
+
+${p}trust <event_ticker>                       Table across all markets in the event
+${p}trust <event_ticker> --market <market>     Single-market detail card
+${p}trust <event_ticker> --market <market> --verbose
+                                            Include raw evidence + confidence/freshness
+
+Six per-market scores (each 0-100), produced by Octagon's deterministic
+Trader Trust calculation:
+
+  trader_trust       Overall composite                      (higher = better)
+  liquidity_quality  Depth/spread/fill behavior             (higher = better)
+  move_quality       Price-move plausibility                (higher = better)
+  resolution_risk    Resolution clarity (higher = clearer)  (higher = better)
+  market_avoid       Avoidance signal                       (higher = WORSE)
+  quote_risk         Quote-side risk                        (higher = WORSE)
+
+Flags:
+  --market <ticker>   Drill into one market in the event
+  --verbose           Show evidence (raw metrics), confidence, data freshness
+  --json              JSON envelope output
+
+Notes:
+  - When trader_trust_json is null (older reports), prints "no trust scorecard for
+    this event yet" — not an error.
+  - Higher-is-better vs. higher-is-worse semantics differ per score; tables and
+    detail views color and annotate accordingly.
+  - "(as of report time)" is shown for scores whose data_freshness is
+    point_in_time (e.g. quote_risk, liquidity_quality on snapshot reports).`,
+
     events: `**${p}events** — Octagon event rollups (event ↔ outcome ladder)
 
 ${p}events                              List events sorted by total_volume
@@ -426,6 +456,8 @@ Discovery:
   series <SERIES>               Sub-markets in one series
   series candles <SERIES>       Series NAV (basket of top sub-markets)
   catalysts upcoming --days 30  Markets closing soon, grouped by week
+  trust <event_ticker>          Trader Trust scorecard (table across markets)
+  trust <event> --market <mkt>  Single-market trust detail card
   watch <ticker>                Live price/orderbook feed
   watch --theme <theme>         Continuous theme scan (Ctrl+C to stop)
   watch --refresh               Force index rebuild before watching
@@ -503,6 +535,8 @@ Discovery:
   /series <SERIES>               Sub-markets in one series
   /series candles <SERIES>       Series NAV (basket of top sub-markets)
   /catalysts upcoming --days 30  Markets closing soon, grouped by week
+  /trust <event_ticker>          Trader Trust scorecard (table across markets)
+  /trust <event> --market <mkt>  Single-market trust detail card
   /watch <ticker>                Live price/orderbook feed
   /watch --theme <theme>         Continuous theme scan (Esc to stop)
   /watch --refresh               Force index rebuild before watching

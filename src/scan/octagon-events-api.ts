@@ -36,6 +36,15 @@ export interface OctagonEventEntry {
   current_state_summary_richtext?: string;
   short_answer_richtext?: string;
   executive_summary_richtext?: string;
+  /**
+   * Trader Trust scorecard fields (added in calculation_version v1.0+).
+   * Null on reports generated before this shipped — callers must guard.
+   */
+  trader_trust_subtitle?: string | null;
+  /** Pre-rendered HTML; the CLI ignores this and reads trader_trust_json. */
+  trader_trust_richtext?: string | null;
+  /** JSON-encoded string. See TraderTrustCard in src/commands/trust.ts. */
+  trader_trust_json?: string | null;
 }
 
 interface EventsPage {
@@ -85,6 +94,33 @@ export async function fetchOctagonEventsPage(opts?: {
     next_cursor: page.next_cursor ?? null,
     has_more: !!page.has_more,
   };
+}
+
+/**
+ * Look up a single event by ticker via the dedicated endpoint
+ * GET /v1/prediction-markets/events/{event_ticker}. Returns null on 404.
+ * Cheaper than `fetchOctagonEventByTicker` which scans paginated pages.
+ */
+export async function fetchOctagonEventDirect(eventTicker: string): Promise<OctagonEventEntry | null> {
+  const apiKey = process.env.OCTAGON_API_KEY;
+  if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${EVENTS_API_BASE}/prediction-markets/events/${encodeURIComponent(eventTicker)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (resp.status === 404) return null;
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`Octagon event lookup ${resp.status}: ${body.slice(0, 200)}`);
+  }
+  return (await resp.json()) as OctagonEventEntry;
 }
 
 /**

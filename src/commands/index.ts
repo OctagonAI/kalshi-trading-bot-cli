@@ -37,6 +37,7 @@ import { handlePeers, formatPeersHuman } from './peers.js';
 import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
 import { handleEvents, formatEventsHuman } from './events.js';
+import { handleTrust, formatTrustHuman } from './trust.js';
 import { handleSeries, formatSeriesHuman } from './series.js';
 import { handleEditorialThemes, formatEditorialThemesHuman } from './editorial-themes.js';
 import { handleCatalysts, formatCatalystsHuman } from './catalysts.js';
@@ -240,6 +241,16 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
         asyncFollowUp: async () => {
           const resp = await handleEvents(parsed);
           return resp.ok ? formatEventsHuman(resp.data) : (resp.error?.message ?? 'events failed');
+        },
+      };
+    }
+    case 'trust': {
+      const parsed = parseArgs(['trust', ...args]);
+      return {
+        output: 'Fetching Trader Trust scorecard...',
+        asyncFollowUp: async () => {
+          const resp = await handleTrust(parsed);
+          return resp.ok ? formatTrustHuman(resp.data) : (resp.error?.message ?? 'trust failed');
         },
       };
     }

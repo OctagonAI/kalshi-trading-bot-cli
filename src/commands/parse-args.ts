@@ -11,6 +11,8 @@ const SUBCOMMANDS = [
   'similar', 'clusters', 'peers', 'correlate', 'basket',
   // Octagon events + Kalshi series rollup + editorial themes registry
   'events', 'series', 'catalysts',
+  // Trader Trust scorecard
+  'trust',
 ] as const;
 
 export type Subcommand = (typeof SUBCOMMANDS)[number];
@@ -76,6 +78,8 @@ export interface ParsedArgs {
   cells: boolean;          // include_cell_detail for correlate
   autoProbs: boolean;      // basket size: auto-fetch leg probabilities via markets/edge
   daysToClose?: number;    // ergonomic shortcut: close_before = now + N days
+  /** --market <ticker>: drill into a specific market within an event (trust). */
+  market?: string;
   parseErrors: string[];
 }
 
@@ -137,6 +141,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
   let cells = false;
   let autoProbs = false;
   let daysToClose: number | undefined;
+  let market: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -421,6 +426,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
       cells = true;
     } else if (arg === '--auto-probs') {
       autoProbs = true;
+    } else if (arg === '--market') {
+      if (i + 1 >= argv.length) {
+        parseErrors.push('--market requires a value (a Kalshi market ticker)');
+      } else {
+        market = argv[++i].toUpperCase();
+      }
     } else if (arg === '--days-to-close' || arg === '--max-dte') {
       const raw = argv[++i];
       if (raw != null) {
@@ -457,7 +468,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): ParsedArgs {
     topK, behavioral, ranked, labelContains, closeBefore, windowDays, correlationInterval, timeframe,
     weights, bankroll, kellyMultiplier, n, maxPerCluster, maxCorrelation, minReturn, seriesTicker,
     sortBy, probabilities, tickers, query, showCluster, aggregateBy, activeOnly,
-    seriesPrefix, sides, cells, autoProbs, daysToClose,
+    seriesPrefix, sides, cells, autoProbs, daysToClose, market,
     parseErrors,
   };
 }

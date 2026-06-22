@@ -137,6 +137,8 @@ Type help for commands, or just ask a question.
 | `series` / `series <ticker>` | Kalshi series rollup (24h vol, market count) |
 | `series candles <ticker>` | Series-level NAV (basket of top sub-markets) |
 | `catalysts upcoming --days N` | Markets closing in the next N days, grouped by week |
+| `trust <event_ticker>` | Trader Trust scorecard — per-market integrity scores (table view) |
+| `trust <event> --market <market>` | Single-market Trader Trust detail card (use `--verbose` for evidence) |
 | `themes` (registry) | Editorial narrative buckets — list/show/import/create/delete/add-series |
 | `themes report` | 25-theme dashboard with SEO + liquidity |
 | `themes audit` | Flag dead themes (high SEO + zero volume) |

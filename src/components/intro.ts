@@ -72,6 +72,7 @@ export class IntroComponent extends Container {
     this.addChild(new Text(cmd('/clusters') + '[--ranked|--behavioral]  Browse thematic & behavioral clusters', 0, 0));
     this.addChild(new Text(cmd('/peers') + '<ticker>  Markets in the same cluster', 0, 0));
     this.addChild(new Text(cmd('/events') + '[ticker]  Octagon events + outcome ladder', 0, 0));
+    this.addChild(new Text(cmd('/trust') + '<event_ticker>  Trader Trust scorecard (per-market integrity)', 0, 0));
     this.addChild(new Text(cmd('/series') + '[ticker]  Series rollup; /series candles <SERIES> for NAV', 0, 0));
     this.addChild(new Text(cmd('/themes') + 'list|show|report|audit|overlap  Editorial narrative registry', 0, 0));
     this.addChild(new Text(cmd('/catalysts') + 'upcoming --days N  Markets closing soon, grouped by week', 0, 0));
