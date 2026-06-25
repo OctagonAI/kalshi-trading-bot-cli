@@ -257,6 +257,12 @@ export async function handleSlashCommand(input: string): Promise<CommandResult |
     }
     case 'report': {
       const parsed = parseArgs(['report', ...args]);
+      // Reject unknown / malformed flags before kicking off the Octagon call
+      // (network round-trip + 3 credits on --refresh). dispatch.ts does the
+      // same for the CLI path; slash command path needs its own guard.
+      if (parsed.parseErrors.length > 0) {
+        return { output: parsed.parseErrors.join('; ') };
+      }
       return {
         output: parsed.refresh ? 'Refreshing Octagon report...' : 'Fetching Octagon report...',
         asyncFollowUp: async () => {

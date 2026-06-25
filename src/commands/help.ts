@@ -263,12 +263,14 @@ before falling back to the Kalshi resolver chain, so series tickers and
 events without open Kalshi markets still work.
 
 Flags:
-  --refresh    Force a fresh report instead of returning the cached one
-  --json       JSON envelope output (rawReport carries the markdown)
+  --refresh    Force a fresh report instead of returning the cached one${ctx === 'cli' ? `
+  --json       JSON envelope output (rawReport carries the markdown)` : ''}
 
-Output footer always shows: source (cache | fresh | cache-miss), local cache
-fetch timestamp + age, and the upstream Octagon analysis_last_updated when
-available — so you can decide whether to --refresh.`,
+When a report body is found, the output footer shows: source (cache | fresh),
+local cache fetch timestamp + age, and the upstream Octagon
+analysis_last_updated when available — so you can decide whether to --refresh.
+Error paths (missing ticker, event not found, no report body yet) print just
+the error message instead.`,
 
     trust: `**${p}trust** — Trader Trust scorecard (market-integrity metrics)
 

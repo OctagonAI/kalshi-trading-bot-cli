@@ -29,6 +29,7 @@ import { normalizeKalshiInput, resolveMarket } from './analyze.js';
 import { callKalshiApi } from '../tools/kalshi/api.js';
 import { formatRawReport } from '../controllers/browse.js';
 import { theme } from '../theme.js';
+import { formatAge } from '../utils/time.js';
 
 /**
  * Pick a market_ticker we can hand to the Octagon invoker. The invoker calls
@@ -88,18 +89,6 @@ function isOctagonCacheMissEnvelope(raw: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Format epoch seconds as a relative-age string. Mirrors analyze.ts:formatAge. */
-function formatAge(epochSeconds: number): string {
-  const ageMs = Date.now() - epochSeconds * 1000;
-  const mins = Math.floor(ageMs / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 export interface ReportData {

@@ -13,6 +13,7 @@ import { openPosition, closePosition, getOpenPositions } from '../db/positions.j
 import { logTrade } from '../db/trades.js';
 import { formatRawReport, parseMarketProb, parsePriceField } from '../controllers/browse.js';
 import type { PriceDriver, Catalyst, Source } from '../scan/types.js';
+import { formatAge } from '../utils/time.js';
 import { kellySize, getVolume24h } from '../risk/kelly.js';
 import type { KellyResult } from '../risk/kelly.js';
 import { riskGate } from '../risk/gate.js';
@@ -97,15 +98,6 @@ function deriveLiquidityGrade(market: KalshiMarket): string {
   return 'Poor';
 }
 
-function formatAge(epochSeconds: number): string {
-  const ageMs = Date.now() - epochSeconds * 1000;
-  const mins = Math.floor(ageMs / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
 
 function getVolume(m: KalshiMarket): number {
   if (m.volume_fp != null) {

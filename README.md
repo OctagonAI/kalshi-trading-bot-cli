@@ -162,7 +162,7 @@ Type help for commands, or just ask a question.
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output for scripts and agents |
-| `--refresh` | Force fresh Octagon report (analyze) |
+| `--refresh` | Force fresh Octagon report (analyze, report) |
 | `--performance` | Include win rate, Sharpe, Brier scores (portfolio) |
 | `--dry-run` | Scan without persisting edges (watch) |
 | `--verbose` | Verbose output |
