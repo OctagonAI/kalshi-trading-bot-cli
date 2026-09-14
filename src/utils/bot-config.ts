@@ -181,7 +181,11 @@ export function setBotSetting(dotKey: string, rawValue: string): { oldValue: unk
   const config = loadBotConfig();
   const oldValue = walkGet(config as unknown as Record<string, unknown>, keys);
   walkSet(config as unknown as Record<string, unknown>, keys, newValue);
-  saveBotConfig(config);
+  // saveBotConfig swallows write errors and returns false; dropping that makes
+  // a failed write indistinguishable from success.
+  if (!saveBotConfig(config)) {
+    throw new Error(`Failed to write config to disk — ${dotKey} was not saved.`);
+  }
 
   return { oldValue, newValue };
 }
