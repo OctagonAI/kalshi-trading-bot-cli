@@ -251,5 +251,14 @@ export async function fetchAllPages<T>(
     if (!cursor) break;
   }
 
+  // Hitting the cap with a cursor still open means the result set is truncated.
+  // Say so: callers that sum these rows (e.g. open exposure) would otherwise
+  // understate the total silently.
+  if (cursor && page >= maxPages) {
+    logger.warn(
+      `[Kalshi API] ${path} truncated at the ${maxPages}-page cap with more pages available (${results.length} ${dataKey} so far)`
+    );
+  }
+
   return results;
 }
