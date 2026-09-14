@@ -2,6 +2,7 @@ import { createSign, constants } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { logger } from '../../utils/logger.js';
 import { auditTrail } from '../../audit/index.js';
+import { fetchWithDeadline } from '../../utils/http.js';
 import { dlqWriter } from './dlq.js';
 import type { KalshiMarket } from './types.js';
 
@@ -85,6 +86,7 @@ interface RetryContext {
 }
 
 const MAX_RETRIES = 5;
+const REQUEST_TIMEOUT_MS = 30_000;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 120_000;
 const JITTER_FACTOR = 0.2;
@@ -200,7 +202,9 @@ export async function callKalshiApi(
         fetchOptions.body = JSON.stringify(options.body);
       }
 
-      const response = await fetch(url.toString(), fetchOptions);
+      // Deadline is required: without one a half-open connection hangs forever
+      // and the retry ladder above never sees a rejection.
+      const response = await fetchWithDeadline(url.toString(), fetchOptions, REQUEST_TIMEOUT_MS);
 
       if (!response.ok) {
         const text = await response.text().catch(() => '');

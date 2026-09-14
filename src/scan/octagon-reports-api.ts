@@ -13,6 +13,7 @@
  * Docs: /guide/rest-api/prediction-markets-reports
  */
 import { logger } from '../utils/logger.js';
+import { fetchWithDeadline } from '../utils/http.js';
 
 const REPORTS_API_BASE = 'https://api.octagonai.co/v1';
 const REQUEST_TIMEOUT_MS = 60_000;
@@ -119,25 +120,19 @@ async function requestJson<T>(
       logger.info(`[reports-api] retrying in ${delay / 1000}s (attempt ${attempt + 1}/${maxRetries + 1})`);
       await new Promise((r) => setTimeout(r, delay));
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let resp: Response;
     try {
-      resp = await fetch(`${baseUrl()}${path}`, {
+      resp = await fetchWithDeadline(`${baseUrl()}${path}`, {
         method,
         headers: { Authorization: `Bearer ${apiKey}` },
-        signal: controller.signal,
-      });
+      }, REQUEST_TIMEOUT_MS);
     } catch (err) {
-      clearTimeout(timer);
       if (err instanceof DOMException && err.name === 'AbortError') {
         lastError = new Error(`Octagon reports API timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${method} ${path})`);
         if (attempt < maxRetries) continue;
         throw lastError;
       }
       throw err;
-    } finally {
-      clearTimeout(timer);
     }
 
     if (resp.ok) return (await resp.json()) as T;

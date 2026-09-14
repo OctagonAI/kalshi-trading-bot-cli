@@ -4,11 +4,13 @@
  *
  * Mirrors the pattern in octagon-events-api.ts:
  * - Fetch + Authorization: Bearer ${OCTAGON_API_KEY}
- * - 60s AbortController timeout per request
+ * - 60s request deadline (fetchWithDeadline), armed until the body is read
  * - Non-2xx → Error with status + body excerpt
  *
  * All endpoints are stateless from the CLI's perspective — no SQLite caching.
  */
+
+import { fetchWithDeadline } from '../utils/http.js';
 
 const KALSHI_API_BASE = 'https://api.octagonai.co/v1/prediction-markets/kalshi';
 const TIMEOUT_MS = 60_000;
@@ -38,23 +40,15 @@ async function kalshiApi<T>(
   }
 
   const url = `${KALSHI_API_BASE}${path}${method === 'GET' ? buildQuery(opts?.params) : ''}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  let resp: Response;
-  try {
-    resp = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(method === 'POST' && opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const resp = await fetchWithDeadline(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(method === 'POST' && opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+  }, TIMEOUT_MS);
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');

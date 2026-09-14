@@ -1,3 +1,5 @@
+import { fetchWithDeadline } from '../utils/http.js';
+
 /**
  * A single event entry from the Octagon Prediction Markets Events API.
  * Probabilities are percentages (0-100).
@@ -77,17 +79,9 @@ export async function fetchOctagonEventsPage(opts?: {
   if (opts?.hasHistory) params.set('has_history', 'true');
   if (opts?.cursor) params.set('cursor', opts.cursor);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let resp: Response;
-  try {
-    resp = await fetch(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  }, TIMEOUT_MS);
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
     throw new Error(`Octagon events API ${resp.status}: ${body.slice(0, 200)}`);
@@ -108,17 +102,9 @@ export async function fetchOctagonEventsPage(opts?: {
 export async function fetchOctagonEventDirect(eventTicker: string): Promise<OctagonEventEntry | null> {
   const apiKey = process.env.OCTAGON_API_KEY;
   if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  let resp: Response;
-  try {
-    resp = await fetch(`${EVENTS_API_BASE}/prediction-markets/events/${encodeURIComponent(eventTicker)}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events/${encodeURIComponent(eventTicker)}`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  }, TIMEOUT_MS);
   if (resp.status === 404) return null;
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
@@ -162,18 +148,9 @@ export async function fetchAllOctagonEvents(opts?: { hasHistory?: boolean }): Pr
     if (opts?.hasHistory) params.set('has_history', 'true');
     if (cursor) params.set('cursor', cursor);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    let resp: Response;
-    try {
-      resp = await fetch(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }, TIMEOUT_MS);
 
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
