@@ -74,7 +74,7 @@ export async function fetchEventHistory(
     let resp: Response;
     try {
       resp = await fetch(
-        `${EVENTS_API_BASE}/prediction-markets/events/${encodeURIComponent(eventTicker)}/history?${params}`,
+        `${EVENTS_API_BASE}/predictions/events/${encodeURIComponent(eventTicker)}/history?${params}`,
         { headers: { Authorization: `Bearer ${apiKey}` }, signal: controller.signal },
       );
     } finally {

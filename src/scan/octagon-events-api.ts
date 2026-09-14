@@ -79,7 +79,7 @@ export async function fetchOctagonEventsPage(opts?: {
   if (opts?.hasHistory) params.set('has_history', 'true');
   if (opts?.cursor) params.set('cursor', opts.cursor);
 
-  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
+  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/predictions/events?${params}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   }, TIMEOUT_MS);
   if (!resp.ok) {
@@ -96,13 +96,13 @@ export async function fetchOctagonEventsPage(opts?: {
 
 /**
  * Look up a single event by ticker via the dedicated endpoint
- * GET /v1/prediction-markets/events/{event_ticker}. Returns null on 404.
+ * GET /v1/predictions/events/{event_ticker}. Returns null on 404.
  * Cheaper than `fetchOctagonEventByTicker` which scans paginated pages.
  */
 export async function fetchOctagonEventDirect(eventTicker: string): Promise<OctagonEventEntry | null> {
   const apiKey = process.env.OCTAGON_API_KEY;
   if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
-  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events/${encodeURIComponent(eventTicker)}`, {
+  const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/predictions/events/${encodeURIComponent(eventTicker)}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   }, TIMEOUT_MS);
   if (resp.status === 404) return null;
@@ -148,7 +148,7 @@ export async function fetchAllOctagonEvents(opts?: { hasHistory?: boolean }): Pr
     if (opts?.hasHistory) params.set('has_history', 'true');
     if (cursor) params.set('cursor', cursor);
 
-    const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/prediction-markets/events?${params}`, {
+    const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/predictions/events?${params}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     }, TIMEOUT_MS);
 

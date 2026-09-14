@@ -1,6 +1,8 @@
 /**
  * Typed wrappers over Octagon's Kalshi search/clusters/correlation/basket API.
- * Endpoints live under https://api.octagonai.co/v1/prediction-markets/kalshi/*.
+ * Endpoints live under https://api.octagonai.co/v1/predictions/kalshi/*.
+ * (The old /v1/prediction-markets/kalshi prefix is deprecated; the sub-paths
+ * and response shapes are identical.)
  *
  * Mirrors the pattern in octagon-events-api.ts:
  * - Fetch + Authorization: Bearer ${OCTAGON_API_KEY}
@@ -12,7 +14,7 @@
 
 import { fetchWithDeadline } from '../utils/http.js';
 
-const KALSHI_API_BASE = 'https://api.octagonai.co/v1/prediction-markets/kalshi';
+const KALSHI_API_BASE = 'https://api.octagonai.co/v1/predictions/kalshi';
 const TIMEOUT_MS = 60_000;
 
 function buildQuery(params?: object): string {
