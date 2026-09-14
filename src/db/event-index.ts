@@ -158,6 +158,10 @@ export function clearAndPopulateIndex(
   }>,
   lastPriceMap?: Map<string, { last_price?: number; dollar_last_price?: string; volume_24h_fp?: string }>,
 ): void {
+  // One transient empty fetch must not wipe a good index.
+  if (events.length === 0) {
+    throw new Error('Refusing to populate the event index from an empty result set');
+  }
   const now = Date.now();
 
   const insert = db.prepare(`
@@ -394,6 +398,15 @@ export function getTopEventsByVolume(db: Database, limit: number): KalshiEvent[]
 /**
  * Get the age of the index in milliseconds, or Infinity if never refreshed.
  */
+/**
+ * Number of rows in the index. The real emptiness test: a 0-row index can
+ * carry a fresh last_refresh timestamp, which makes it look populated.
+ */
+export function countIndexRows(db: Database): number {
+  const row = db.query('SELECT COUNT(*) AS n FROM event_index').get() as { n: number } | null;
+  return row?.n ?? 0;
+}
+
 export function getIndexAge(db: Database): number {
   const last = getLastRefresh(db);
   if (last === null) return Infinity;
