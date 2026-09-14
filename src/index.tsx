@@ -9,7 +9,17 @@ import { dispatch } from './commands/dispatch.js';
 import { initTelemetry, trackEvent, shutdownTelemetry } from './utils/telemetry.js';
 import packageJson from '../package.json';
 
-const parsed = parseArgs();
+const rawArgs = process.argv.slice(2);
+
+// Handled before parseArgs(), which would reject --version/--help as unknown
+// flags and treat -h as a positional.
+if (rawArgs.includes('--version') || rawArgs.includes('-v')) {
+  console.log(packageJson.version);
+  process.exit(0);
+}
+const parsed = rawArgs.includes('-h') || rawArgs.includes('--help')
+  ? parseArgs(['help'])
+  : parseArgs();
 
 await initTelemetry();
 trackEvent('app_start', {
