@@ -36,7 +36,7 @@ Examples:
   ${p}search "bitcoin price" --min-volume 10000
   ${p}search edge --min-edge 30 --category crypto
 
-Tip: ${p}similar gives semantic match (catches "Bitcoin pierce six figures" ↔ "BTC > $100k").`,
+Tip: ${p}similar walks the taxonomy from a ticker — same event, then series, then category.`,
 
     portfolio: `**${p}portfolio** — Account state
 
@@ -183,21 +183,24 @@ For parallel bunx, pre-warm the cache serially before fanning out:
 
 See README → Scripting & Parallel Use for the full picture.`,
 
-    similar: `**${p}similar** — Semantic market search (Octagon-powered)
+    similar: `**${p}similar** — Related markets (Octagon-powered)
 
-${p}similar <ticker>                  Markets near this ticker by embedding distance
-${p}similar -q "free-text query"      Markets matching free-text intent (server-side embed)
-${p}similar <ticker> --top-k 25       Return top-25 nearest neighbors
+${p}similar <ticker>                  Markets related to this ticker, ranked by taxonomy
+${p}similar -q "free-text query"      Markets matching the text, ranked by keyword relevance
+${p}similar <ticker> --top-k 25       Return the top 25
 ${p}similar -q "..." --category crypto --min-volume 10000 --close-before 2026-08-19T00:00:00Z
 
 Flags:
-  --top-k <n>             Number of neighbors (default 25, max 100)
+  --top-k <n>             Number of results (default 25, max 100)
   --category <name>       Restrict to a Kalshi category
   --min-volume <n>        Floor on 24h volume
   --close-before <iso>    Only markets closing before this timestamp
   --json                  JSON output
 
-Catches matches keyword search misses — "Will Bitcoin pierce six figures" ↔ "BTC over $100k".`,
+Ranking: a ticker anchor walks the taxonomy — same event, then series, then
+category, each ordered by 24h volume. A -q anchor ranks by keyword relevance.
+The "distance" column is that rank order (row number / 1000), not a similarity
+score: Octagon removed the embedding layer.`,
 
     clusters: `**${p}clusters** — Browse Octagon clusters (thematic + behavioral)
 
@@ -563,8 +566,8 @@ Discovery:
   search --aggregate-by series  Roll up results to series level
   search themes                 (Legacy) Kalshi category labels
   search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
-  similar <ticker>              Semantic neighbors (embedding distance)
-  similar -q "free text"        Semantic search by natural-language query
+  similar <ticker>              Related markets (taxonomy walk)
+  similar -q "free text"        Related markets by keyword relevance
   clusters [--label X]          Browse thematic clusters
   clusters <id>                 List markets in a cluster
   clusters --behavioral         Behavioral clusters (30-day return vectors)
@@ -651,8 +654,8 @@ Discovery:
   /search --aggregate-by series  Roll up results to series level
   /search themes                 (Legacy) Kalshi category labels
   /search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
-  /similar <ticker>              Semantic neighbors (embedding distance)
-  /similar -q "free text"        Semantic search by natural-language query
+  /similar <ticker>              Related markets (taxonomy walk)
+  /similar -q "free text"        Related markets by keyword relevance
   /clusters [--label X]          Browse thematic clusters
   /clusters <id>                 List markets in a cluster
   /clusters --behavioral         Behavioral clusters (30-day return vectors)
