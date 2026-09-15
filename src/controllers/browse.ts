@@ -13,24 +13,19 @@ import { resolveMarket } from '../commands/analyze.js';
 import type { KalshiEvent, KalshiMarket } from '../tools/kalshi/types.js';
 import { trackEvent } from '../utils/telemetry.js';
 
-/** Maps lowercase theme IDs to exact Kalshi category labels (inlined to avoid heavy theme-resolver import) */
-const CATEGORY_MAP: Record<string, string> = {
-  climate: 'Climate and Weather',
-  companies: 'Companies',
-  crypto: 'Crypto',
-  economics: 'Economics',
-  elections: 'Elections',
-  entertainment: 'Entertainment',
-  financials: 'Financials',
-  health: 'Health',
-  mentions: 'Mentions',
-  politics: 'Politics',
-  science: 'Science and Technology',
-  social: 'Social',
-  sports: 'Sports',
-  transportation: 'Transportation',
-  world: 'World',
-};
+// The category vocabulary comes from the theme registry, which is a leaf module
+// (no db, no http, no Kalshi client) — so importing it here costs nothing and
+// removes the hand-copy that had drifted from both the data and theme-resolver.
+import { findTheme } from '../scan/theme-registry.js';
+
+/** Exact Kalshi category labels for a theme id, or null for free text. */
+function themeCategories(theme: string): string[] | null {
+  const labels = findTheme(theme)?.kalshiCategories ?? [];
+  return labels.length > 0 ? labels : null;
+}
+
+/** Rows shown in the browse list, applied after filtering and sorting. */
+const BROWSE_EVENT_CAP = 30;
 
 /** Minimal market shape needed by parseMarketProb and isMarketActive */
 export interface MarketRow {
@@ -78,30 +73,20 @@ export function parseMarketProb(m: MarketRow): number | null {
   return null;
 }
 
-/** Check if a market is actively tradeable: open/active, not resolved, and has at least one trade */
+/**
+ * Check if a market is tradeable: open/active and not resolved.
+ *
+ * Deliberately does NOT filter on volume. Requiring volume_24h > 0 hid 96.9% of
+ * the index (1,210 of 38,708 markets qualified), including 26,980 markets with
+ * real lifetime volume but a quiet last 24h — normal for long-dated contracts.
+ * Volume filtering is opt-in through `--min-volume`; nothing is filtered
+ * silently here.
+ */
 export function isMarketActive(m: MarketRow): boolean {
   // Must be in a tradeable state
   if (m.status !== 'open' && m.status !== 'active') return false;
   // Must not be resolved
   if (m.result && m.result !== '') return false;
-  // Must have recent trading activity (volume_24h > 0)
-  // Markets with zero 24h volume have stale last_price from old trades
-  const vol24h = typeof m.volume_24h === 'string'
-    ? parseFloat(m.volume_24h)
-    : (m.volume_24h ?? 0);
-  if (m.volume_24h != null && vol24h <= 0) return false;
-  // Must have at least one actual trade (last_price > 0)
-  // If last_price is absent (old index row), fall through and allow it
-  const lastPrice = m.last_price ?? 0;
-  const dollarStr = m.last_price_dollars ?? m.dollar_last_price;
-  const parsedDollar = dollarStr != null ? parseFloat(String(dollarStr)) : NaN;
-  const lastPriceDollar = Number.isFinite(parsedDollar) ? parsedDollar : 0;
-  if (lastPrice === 0 && lastPriceDollar === 0) {
-    // Transition fallback: if all last_price fields are missing entirely (not zero),
-    // allow the market through so old index rows still appear
-    if (m.last_price == null && dollarStr == null) return true;
-    return false;
-  }
   return true;
 }
 
@@ -122,12 +107,14 @@ export interface BrowseEventRow {
   pending?: boolean;
 }
 
-export type BrowseAppState = 'idle' | 'loading' | 'event_list' | 'action_menu' | 'view_report';
+export type BrowseAppState = 'idle' | 'loading' | 'event_list' | 'market_list' | 'action_menu' | 'view_report';
 
 export interface BrowseState {
   appState: BrowseAppState;
   theme: string;
   events: BrowseEventRow[];
+  /** The event opened in `market_list`, whose markets are on screen. */
+  selectedEvent: BrowseEventRow | null;
   selectedMarket: BrowseMarketRow | null;
   selectedEventTicker: string | null;
   pendingRecommendTicker: string | null;
@@ -228,6 +215,7 @@ export class BrowseController {
   private eventsValue: BrowseEventRow[] = [];
   private selectedMarketValue: BrowseMarketRow | null = null;
   private selectedEventTickerValue: string | null = null;
+  private selectedEventValue: BrowseEventRow | null = null;
   private pendingRecommendTickerValue: string | null = null;
   private pendingTradeTickerValue: string | null = null;
   private lastErrorValue: string | null = null;
@@ -250,6 +238,7 @@ export class BrowseController {
       appState: this.appStateValue,
       theme: this.themeValue,
       events: this.eventsValue,
+      selectedEvent: this.selectedEventValue,
       selectedMarket: this.selectedMarketValue,
       selectedEventTicker: this.selectedEventTickerValue,
       pendingRecommendTicker: this.pendingRecommendTickerValue,
@@ -287,6 +276,7 @@ export class BrowseController {
     this.directReportMode = false;
     this.themeValue = theme;
     this.eventsValue = [];
+    this.selectedEventValue = null;
     this.selectedMarketValue = null;
     this.selectedEventTickerValue = null;
     this.pendingRecommendTickerValue = null;
@@ -308,6 +298,7 @@ export class BrowseController {
     this.loadToken++;
     this.directReportMode = true;
     this.eventsValue = [];
+    this.selectedEventValue = null;
     this.selectedMarketValue = null;
     this.selectedEventTickerValue = null;
     this.pendingRecommendTickerValue = null;
@@ -348,6 +339,17 @@ export class BrowseController {
       this.onError(`Report failed: ${err instanceof Error ? err.message : String(err)}`);
       this.resetToIdle();
     }
+  }
+
+  /** Open one event and show its markets. */
+  selectEvent(eventTicker: string): void {
+    trackEvent('browse_action', { action: 'select_event' });
+    const event = this.eventsValue.find((ev) => ev.eventTicker === eventTicker);
+    if (!event) return;
+    this.selectedEventValue = event;
+    this.selectedEventTickerValue = eventTicker;
+    this.appStateValue = 'market_list';
+    this.emitChange();
   }
 
   selectMarket(eventTicker: string, marketTicker: string): void {
@@ -441,7 +443,14 @@ export class BrowseController {
         this.resetToIdle();
         return;
       }
+      // Step back to the event's market list when we drilled in through one,
+      // rather than jumping all the way out to the event list.
       this.selectedMarketValue = null;
+      if (this.selectedEventValue) {
+        this.appStateValue = 'market_list';
+        this.emitChange();
+        return;
+      }
       this.selectedEventTickerValue = null;
       this.appStateValue = 'event_list';
       this.emitChange();
@@ -453,6 +462,14 @@ export class BrowseController {
     if (this.appStateValue === 'view_report') {
       this.reportTextValue = null;
       this.appStateValue = 'action_menu';
+      this.emitChange();
+      return;
+    }
+    // esc from an event's market list returns to the event list, not out.
+    if (this.appStateValue === 'market_list') {
+      this.selectedEventValue = null;
+      this.selectedEventTickerValue = null;
+      this.appStateValue = 'event_list';
       this.emitChange();
       return;
     }
@@ -520,23 +537,21 @@ export class BrowseController {
         if (token !== undefined && token !== this.loadToken) return;
 
         // Now query the index
-        if (CATEGORY_MAP[theme]) {
-          const categoryLabel = CATEGORY_MAP[theme];
-          kalshiEvents = await this.searchIndex(db, '', categoryLabel);
+        if (themeCategories(theme)) {
+          kalshiEvents = await this.searchIndex(db, '', themeCategories(theme));
         } else {
           const searchTerm = theme.includes(':') ? theme.split(':').slice(1).join(':') : theme;
-          const categoryLabel = theme.includes(':') ? CATEGORY_MAP[theme.split(':')[0]] : null;
-          kalshiEvents = await this.searchIndex(db, searchTerm, categoryLabel);
+          const categoryLabels = theme.includes(':') ? themeCategories(theme.split(':')[0] ?? '') : null;
+          kalshiEvents = await this.searchIndex(db, searchTerm, categoryLabels);
         }
-      } else if (CATEGORY_MAP[theme]) {
+      } else if (themeCategories(theme)) {
         // Pure category (e.g. "elections") — read from local index
-        const categoryLabel = CATEGORY_MAP[theme];
-        kalshiEvents = await this.searchIndex(db, '', categoryLabel);
+        kalshiEvents = await this.searchIndex(db, '', themeCategories(theme));
       } else {
         // Subcategory (e.g. "politics:iran") or free-text search (e.g. "iran")
         const searchTerm = theme.includes(':') ? theme.split(':').slice(1).join(':') : theme;
-        const categoryLabel = theme.includes(':') ? CATEGORY_MAP[theme.split(':')[0]] : null;
-        kalshiEvents = await this.searchIndex(db, searchTerm, categoryLabel);
+        const categoryLabels = theme.includes(':') ? themeCategories(theme.split(':')[0] ?? '') : null;
+        kalshiEvents = await this.searchIndex(db, searchTerm, categoryLabels);
       }
 
       // Sort all events by total market volume (most active first)
@@ -550,7 +565,9 @@ export class BrowseController {
       if (token !== undefined && token !== this.loadToken) return;
 
       this.progressMessageValue = null;
-      this.eventsValue = this.kalshiEventsToRows(kalshiEvents, db);
+      // Cap AFTER filtering and sorting, so the rows shown are the top N
+      // tradeable events rather than an arbitrary slice of the index.
+      this.eventsValue = this.kalshiEventsToRows(kalshiEvents, db).slice(0, BROWSE_EVENT_CAP);
       this.appStateValue = 'event_list';
       this.emitChange();
 
@@ -792,36 +809,39 @@ export class BrowseController {
   private async searchIndex(
     db: ReturnType<typeof getDb>,
     searchTerm: string,
-    categoryLabel: string | null,
+    categoryLabels: string[] | null,
   ): Promise<KalshiEvent[]> {
     try {
       await ensureIndex();
       let rows: any[] = [];
-      if (categoryLabel && !searchTerm) {
+      // No LIMIT here on purpose: rows are filtered for tradeability and sorted
+      // by volume downstream, so capping at the SQL layer would pick an
+      // arbitrary slice before any of that ran.
+      if (categoryLabels && !searchTerm) {
+        const placeholders = categoryLabels.map(() => '?').join(',');
         rows = db.query(
-          `SELECT event_ticker FROM event_index WHERE category = ? LIMIT 30`,
-        ).all(categoryLabel);
-      } else if (categoryLabel) {
+          `SELECT event_ticker FROM event_index WHERE category IN (${placeholders})`,
+        ).all(...categoryLabels);
+      } else if (categoryLabels) {
         const term = `%${searchTerm.toLowerCase()}%`;
+        const placeholders = categoryLabels.map(() => '?').join(',');
         rows = db.query(
           `SELECT event_ticker FROM event_index
-           WHERE category = ? AND (LOWER(title) LIKE ? OR LOWER(event_ticker) LIKE ? OR LOWER(COALESCE(sub_title,'')) LIKE ? OR LOWER(COALESCE(series_ticker,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)
-           LIMIT 30`,
-        ).all(categoryLabel, term, term, term, term, term);
+           WHERE category IN (${placeholders}) AND (LOWER(title) LIKE ? OR LOWER(event_ticker) LIKE ? OR LOWER(COALESCE(sub_title,'')) LIKE ? OR LOWER(COALESCE(series_ticker,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?)`,
+        ).all(...categoryLabels, term, term, term, term, term);
       } else {
         const normalizedTerm = searchTerm.trim().toUpperCase();
         const isTicker = /^[A-Z0-9]+$/.test(normalizedTerm);
         if (isTicker) {
           rows = db.query(
-            `SELECT event_ticker FROM event_index WHERE series_ticker = ? LIMIT 30`,
+            `SELECT event_ticker FROM event_index WHERE series_ticker = ?`,
           ).all(normalizedTerm);
         }
         if (!rows || rows.length === 0) {
           const term = `%${searchTerm.toLowerCase()}%`;
           rows = db.query(
             `SELECT event_ticker FROM event_index
-             WHERE LOWER(title) LIKE ? OR LOWER(event_ticker) LIKE ? OR LOWER(COALESCE(sub_title,'')) LIKE ? OR LOWER(COALESCE(series_ticker,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?
-             LIMIT 30`,
+             WHERE LOWER(title) LIKE ? OR LOWER(event_ticker) LIKE ? OR LOWER(COALESCE(sub_title,'')) LIKE ? OR LOWER(COALESCE(series_ticker,'')) LIKE ? OR LOWER(COALESCE(tags,'')) LIKE ?`,
           ).all(term, term, term, term, term);
         }
       }
@@ -1005,6 +1025,7 @@ export class BrowseController {
     this.themeValue = '';
     this.directReportMode = false;
     this.eventsValue = [];
+    this.selectedEventValue = null;
     this.selectedMarketValue = null;
     this.selectedEventTickerValue = null;
     this.lastErrorValue = null;

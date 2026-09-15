@@ -116,7 +116,7 @@ Type help for commands, or just ask a question.
 
 | Command | Description |
 |---------|-------------|
-| `search [theme\|ticker\|query]` | Find markets by keyword or theme (Octagon-backed when key set) |
+| `search [theme\|query]` | Find **events** by theme or keyword (Octagon-backed when key set). `search <event_ticker>` drills into that event's markets; `search crypto:btc` narrows a theme |
 | `search edge [--min-edge N]` | Scan all markets by model edge (Octagon `markets-with-edge`) |
 | `similar <ticker\|"query">` | Related markets via Octagon — taxonomy walk from a ticker, keyword relevance from a query |
 | `clusters [--label X]` | Browse thematic clusters of the Kalshi universe |

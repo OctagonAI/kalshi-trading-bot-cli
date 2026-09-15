@@ -5,25 +5,17 @@ import type { KalshiEvent, KalshiMarket, KalshiSeries } from '../tools/kalshi/ty
 import { ensureIndex, getRefreshPromise } from '../tools/kalshi/search-index.js';
 import { upsertEvent, deactivateExpired } from '../db/events.js';
 import { getThemeTickers } from '../db/themes.js';
+import { findTheme, themeCategoryLabels } from './theme-registry.js';
 
-/** Maps lowercase theme IDs → exact Kalshi category labels */
-export const CATEGORY_MAP: Record<string, string> = {
-  'climate': 'Climate and Weather',
-  'companies': 'Companies',
-  'crypto': 'Crypto',
-  'economics': 'Economics',
-  'elections': 'Elections',
-  'entertainment': 'Entertainment',
-  'financials': 'Financials',
-  'health': 'Health',
-  'mentions': 'Mentions',
-  'politics': 'Politics',
-  'science': 'Science and Technology',
-  'social': 'Social',
-  'sports': 'Sports',
-  'transportation': 'Transportation',
-  'world': 'World',
-};
+/**
+ * Maps lowercase theme IDs → exact Kalshi category labels.
+ *
+ * Derived from the theme registry rather than hand-maintained: the old literal
+ * had drifted from the data (`Transportation` matched zero rows, and the
+ * `Science & Technology` spelling was unreachable). Values are arrays because
+ * one theme legitimately spans several upstream labels.
+ */
+export const CATEGORY_MAP: Record<string, string[]> = themeCategoryLabels();
 
 /**
  * Fetch all series from Kalshi and build a map of category → sorted subcategory tags.
@@ -116,7 +108,11 @@ export class ThemeResolver {
   }
 
   private async resolveCategory(themeName: string): Promise<string[]> {
-    const categoryLabel = CATEGORY_MAP[themeName];
+    const theme = findTheme(themeName);
+    const labels = theme?.kalshiCategories ?? [];
+    const tags = theme?.tags ?? [];
+    if (labels.length === 0 && tags.length === 0) return [];
+
     // Kalshi /events API does not support server-side category filtering,
     // so query the local SQLite index instead of fetching all open events
     await ensureIndex();
@@ -124,29 +120,50 @@ export class ThemeResolver {
     // await it so we don't query an unpopulated event_index table
     const pending = getRefreshPromise();
     if (pending) await pending;
-    const rows = this.db.query(
-      `SELECT event_ticker FROM event_index WHERE category = ?`,
-    ).all(categoryLabel) as { event_ticker: string }[];
-    return rows.map((r) => r.event_ticker);
+
+    const seen = new Set<string>();
+    if (labels.length > 0) {
+      const placeholders = labels.map(() => '?').join(',');
+      const rows = this.db.query(
+        `SELECT event_ticker FROM event_index WHERE category IN (${placeholders})`,
+      ).all(...labels) as { event_ticker: string }[];
+      for (const r of rows) seen.add(r.event_ticker);
+    }
+    // Comma-wrap both sides so a tag matches as a whole token: "Tech" must not
+    // also match "Tech Stocks".
+    for (const tag of tags) {
+      const rows = this.db.query(
+        `SELECT event_ticker FROM event_index WHERE ',' || COALESCE(tags, '') || ',' LIKE ?`,
+      ).all(`%,${tag},%`) as { event_ticker: string }[];
+      for (const r of rows) seen.add(r.event_ticker);
+    }
+    return [...seen];
   }
 
   private async resolveSubcategory(themeName: string): Promise<string[]> {
     const [catKey, ...subParts] = themeName.split(':');
     const subTag = subParts.join(':').toLowerCase();
-    const categoryLabel = CATEGORY_MAP[catKey];
-    if (!categoryLabel) return [];
+    const labels = findTheme(catKey ?? '')?.kalshiCategories ?? [];
+    if (labels.length === 0) return [];
 
-    // Find series in this category with matching tag
-    const allSeries = await fetchAllPages<KalshiSeries>('/series', { category: categoryLabel }, 'series', 50);
+    // Find series in these categories with a matching tag
+    const perLabel = await Promise.all(
+      labels.map((label) =>
+        fetchAllPages<KalshiSeries>('/series', { category: label }, 'series', 50),
+      ),
+    );
+    const wanted = new Set(labels);
     const matchingSeries = new Set<string>();
-    for (const s of allSeries) {
-      if (s.category !== categoryLabel) continue;
-      const hasTag = (s.tags ?? []).some((t) => {
-        const tagLower = t.toLowerCase();
-        const tagKebab = tagLower.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        return tagLower === subTag || tagKebab === subTag;
-      });
-      if (hasTag) matchingSeries.add(s.ticker);
+    for (const series of perLabel) {
+      for (const s of series) {
+        if (!s.category || !wanted.has(s.category)) continue;
+        const hasTag = (s.tags ?? []).some((t) => {
+          const tagLower = t.toLowerCase();
+          const tagKebab = tagLower.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+          return tagLower === subTag || tagKebab === subTag;
+        });
+        if (hasTag) matchingSeries.add(s.ticker);
+      }
     }
 
     if (matchingSeries.size === 0) return [];

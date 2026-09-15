@@ -26,13 +26,14 @@ import { scanEdges, formatEdgeScanHuman } from './search-edge.js';
 import type { KalshiBalanceResponse } from './formatters.js';
 import { ExitCode, exitCodeFromError } from '../utils/errors.js';
 import { trackEvent } from '../utils/telemetry.js';
-import { handleSimilar, formatSimilarHuman } from './similar.js';
+import { handleSimilar, formatSimilarHuman, looksLikeTicker } from './similar.js';
 import { handleClusters, formatClustersHuman } from './clusters.js';
 import { handlePeers, formatPeersHuman } from './peers.js';
 import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
-import { searchKalshiMarkets, getMarketsWithEdge } from '../scan/octagon-kalshi-api.js';
-import { formatMarketSearchHuman, formatMarketsWithEdgeHuman } from './search-remote.js';
+import { searchKalshiMarkets, getMarketsWithEdge, searchOctagonEvents, getEventMarkets } from '../scan/octagon-kalshi-api.js';
+import { formatMarketSearchHuman, formatMarketsWithEdgeHuman, formatEventSearchHuman } from './search-remote.js';
+import { parseThemeQuery } from '../scan/theme-registry.js';
 import { handleEvents, formatEventsHuman } from './events.js';
 import { handleTrust, formatTrustHuman } from './trust.js';
 import { handleReport, formatReportHuman } from './report.js';
@@ -245,6 +246,78 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
           process.exit(resp.ok ? ExitCode.SUCCESS : ExitCode.USER_ERROR);
           return;
         }
+        // Market-level filters exist only on the markets route. The events
+        // route answers an unrecognised param with zero rows rather than an
+        // error, so any query carrying one stays on markets — which is also
+        // what keeps --min-volume meaningful.
+        const usesMarketFilters = Boolean(
+          args.category || args.seriesTicker || args.seriesPrefix ||
+          args.minVolume !== undefined || args.closeBefore || args.sortBy,
+        );
+
+        // An event identifier drills into that event's markets rather than
+        // searching for the literal string. Ticker shape alone can't separate
+        // an event from a market (KXNEWPOPE-70 vs KXNEWPOPE-70-PPIZ, while
+        // KXELONMARS-99's only market IS KXELONMARS-99), so resolution decides:
+        // ask for the event's markets and fall through if there are none.
+        if (!usesMarketFilters && query && looksLikeTicker(query)) {
+          try {
+            const drill = await getEventMarkets(query.toUpperCase(), { limit: args.limit ?? 30 });
+            if (drill.data.length > 0) {
+              const drillPage = {
+                data: drill.data,
+                next_cursor: drill.next_cursor ?? null,
+                has_more: !!drill.has_more,
+              };
+              if (json) {
+                console.log(JSON.stringify(wrapSuccess('search', { kind: 'markets', ...drillPage })));
+              } else {
+                console.log(formatMarketSearchHuman(query.toUpperCase(), drillPage));
+              }
+              return;
+            }
+          } catch {
+            // Not an event ticker — fall through to search.
+          }
+        }
+
+        // A theme resolves to Octagon's cross-venue vocabulary. The value comes
+        // from the registry, never from raw input: meta_category is
+        // case-sensitive and a wrong case returns zero rows, not an error.
+        // `theme:subtheme` ANDs the subtheme in as free text.
+        const { theme, subtheme } = parseThemeQuery(query);
+        if (!usesMarketFilters && theme) {
+          const eventsPage = await searchOctagonEvents({
+            meta_category: theme.metaCategory,
+            // Autocomplete offers kebab-cased tags (oil-and-energy); q is full
+            // text, so hyphens have to become spaces or it matches nothing.
+            ...(subtheme ? { q: subtheme.replace(/-/g, ' ') } : {}),
+            limit: args.limit ?? 30,
+          });
+          const describe = subtheme ? `theme ${theme.id}:${subtheme}` : `theme ${theme.id}`;
+          if (json) {
+            console.log(JSON.stringify(wrapSuccess('search', { kind: 'events', ...eventsPage })));
+          } else {
+            console.log(formatEventSearchHuman(describe, eventsPage));
+          }
+          return;
+        }
+
+        // Free text is event-first too — the subject lives on the event, not on
+        // individual outcome rows. Markets remain the fallback when no event
+        // matches, so nothing that used to be findable stops being findable.
+        if (!usesMarketFilters && query) {
+          const eventsPage = await searchOctagonEvents({ q: query, limit: args.limit ?? 30 });
+          if (eventsPage.data.length > 0) {
+            if (json) {
+              console.log(JSON.stringify(wrapSuccess('search', { kind: 'events', ...eventsPage })));
+            } else {
+              console.log(formatEventSearchHuman(`"${query}"`, eventsPage));
+            }
+            return;
+          }
+        }
+
         // sort_by is now server-side (true top-N across the whole universe);
         // series_prefix lets us tree-browse (KXBTC matches all Bitcoin series).
         const serverSortBy = (args.sortBy === 'volume_24h' || args.sortBy === 'close_time' || args.sortBy === 'last_price')
@@ -266,7 +339,7 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
           : page.data;
         const filteredPage = { ...page, data: rows };
         if (json) {
-          console.log(JSON.stringify(wrapSuccess('search', filteredPage)));
+          console.log(JSON.stringify(wrapSuccess('search', { kind: 'markets', ...filteredPage })));
         } else {
           console.log(formatMarketSearchHuman(query, filteredPage));
         }
