@@ -32,12 +32,14 @@ export async function handleThemes(args: ParsedArgs): Promise<CLIResponse<Themes
     // API unavailable — show categories without subcategories
   }
 
-  // All Kalshi categories with their subcategories
-  for (const [id, label] of Object.entries(CATEGORY_MAP)) {
-    const subs = subcatMap[label] ?? [];
+  // All Kalshi categories with their subcategories. A theme can span several
+  // upstream labels (e.g. both spellings of "Science & Technology"), so the
+  // subcategory tags are the union across them.
+  for (const [id, labels] of Object.entries(CATEGORY_MAP)) {
+    const subs = [...new Set(labels.flatMap((l) => subcatMap[l] ?? []))];
     themes.push({
       id,
-      name: label,
+      name: labels.join(', '),
       type: 'category',
       ...(subs.length > 0 ? { subcategories: subs } : {}),
     });

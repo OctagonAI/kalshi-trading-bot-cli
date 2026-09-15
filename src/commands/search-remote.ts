@@ -4,7 +4,7 @@
  * OCTAGON_API_KEY is set; the legacy local-SQLite paths remain as fallback.
  */
 import { formatTable } from './scan-formatters.js';
-import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse } from '../scan/octagon-kalshi-api.js';
+import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse, EventSearchRow } from '../scan/octagon-kalshi-api.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
@@ -28,6 +28,51 @@ function fmtCloseDate(iso: string | null): string {
   // Slice the original string rather than re-serialising: toISOString() shifts
   // the displayed day for any offset-bearing timestamp.
   return iso.slice(0, 10);
+}
+
+/**
+ * Event-level search results.
+ *
+ * `describe` names what was searched (a theme id, or the raw query) so an empty
+ * result says which question returned nothing rather than printing a bare table.
+ *
+ * Note the column semantics: each row is one event represented by its
+ * best-matching market, so Last and 24h Vol belong to that market, not to the
+ * event as a whole. The endpoint exposes no market count, so there is no Mkts
+ * column.
+ */
+export function formatEventSearchHuman(describe: string, page: PagedResult<EventSearchRow>): string {
+  const lines: string[] = [];
+  const more = page.has_more ? ' (more available)' : '';
+  lines.push(`Events matching ${describe} — ${page.data.length} shown${more}`);
+  lines.push('');
+
+  if (page.data.length === 0) {
+    lines.push(`No events found for ${describe}.`);
+    return lines.join('\n');
+  }
+
+  const rows: string[][] = page.data.map((e) => [
+    eventIdOf(e),
+    truncate(e.title ?? '-', 44),
+    fmtMoney(e.last_price),
+    fmtVol(e.volume_24h),
+    e.category ?? '-',
+    fmtCloseDate(e.close_time ?? null),
+  ]);
+  lines.push(formatTable(
+    ['Event', 'Title', 'Last*', '24h Vol*', 'Category', 'Closes'],
+    rows,
+  ));
+  lines.push('');
+  lines.push('* of the event\'s best-matching market, not an event total.');
+  lines.push(`Drill into one event: search ${eventIdOf(page.data[0])}`);
+  return lines.join('\n');
+}
+
+/** The venue-native identifier; `event_ticker` is venue-prefixed. */
+export function eventIdOf(e: EventSearchRow): string {
+  return e.native_event_ticker ?? e.event_ticker;
 }
 
 export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiMarketRow>): string {
