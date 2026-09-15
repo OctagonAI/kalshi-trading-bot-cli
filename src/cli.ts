@@ -24,8 +24,8 @@ import {
   WorkingIndicatorComponent,
   createApiKeyConfirmSelector,
   createBrowseActionSelector,
+  createBrowseEventSelector,
   createBrowseMarketSelector,
-  updateBrowseMarketSelector,
   createModelSelector,
   createProviderSelector,
 } from './components/index.js';
@@ -37,6 +37,7 @@ import { ensureIndex, onIndexProgress, getRefreshPromise } from './tools/kalshi/
 import { callKalshiApi } from './tools/kalshi/api.js';
 import type { KalshiMarket } from './tools/kalshi/types.js';
 import { SetupWizardController } from './setup/wizard.js';
+import { allThemeIds } from './scan/theme-registry.js';
 import { trackEvent } from './utils/telemetry.js';
 
 function truncateAtWord(str: string, maxLength: number): string {
@@ -202,7 +203,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   });
 
   // Slash command autocomplete — start with top-level themes, load subcategories in background
-  const baseThemes = ['top50', 'climate', 'companies', 'crypto', 'economics', 'elections', 'entertainment', 'financials', 'health', 'mentions', 'politics', 'science', 'social', 'sports', 'transportation', 'world'];
+  const baseThemes = allThemeIds();
   let allThemes = baseThemes.map((t) => ({ value: t, label: t }));
 
   // Pre-warm the event index on startup (non-blocking, only if credentials exist)
@@ -233,9 +234,10 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     void (async () => {
       try {
         const { fetchSubcategories, CATEGORY_MAP } = await import('./scan/theme-resolver.js');
+        // A theme can span several upstream labels, so invert the array form.
         const labelToKey: Record<string, string> = {};
-        for (const [key, label] of Object.entries(CATEGORY_MAP)) {
-          labelToKey[label] = key;
+        for (const [key, labels] of Object.entries(CATEGORY_MAP)) {
+          for (const label of labels) labelToKey[label] = key;
         }
         const subcats = await fetchSubcategories();
         const subEntries: Array<{ value: string; label: string }> = [];
@@ -361,7 +363,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
       { value: 'basket', label: 'basket', description: 'Build / backtest / size baskets' },
       { value: 'events', label: 'events', description: 'Octagon events (event ↔ outcome ladder)' },
-      { value: 'trust', label: 'trust', description: 'Trader Trust scorecard (per-market integrity scores)' },
+      { value: 'trust', label: 'trust', description: 'Octagon Trust Index for an event' },
       { value: 'report', label: 'report', description: 'Full Octagon markdown report for an event' },
       { value: 'series', label: 'series', description: 'Series rollup / NAV' },
       { value: 'catalysts', label: 'catalysts', description: 'Upcoming market closes by week' },
@@ -433,7 +435,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     { name: 'peers', description: 'Find markets in the same cluster as a ticker', getArgumentCompletions: usageHint('<ticker> [--behavioral] [--limit N] [--show-cluster]', 'e.g. KXBTCD-26DEC31-T100000 --limit 20') },
     { name: 'correlate', description: 'Pairwise correlation matrix (2-100 tickers)', getArgumentCompletions: usageHint('<ticker1> <ticker2> [...] [--window-days N]', 'e.g. KXA KXB KXC --window-days 90') },
     { name: 'events', description: 'Octagon events — outcome ladder per event', getArgumentCompletions: usageHint('<event_ticker> | --category Politics | --min-volume 10000', 'e.g. KXFEDCHAIRNOM-29 to drill in') },
-    { name: 'trust', description: 'Trader Trust scorecard (per-market integrity scores)', getArgumentCompletions: usageHint('<event_ticker> [--market <market_ticker>] [--verbose]', 'e.g. KXMENWORLDCUP-26 --market KXMENWORLDCUP-26-FR') },
+    { name: 'trust', description: 'Octagon Trust Index for an event', getArgumentCompletions: usageHint('<event_ticker> [--market <market_ticker>] [--verbose]', 'e.g. KXMENWORLDCUP-26 --market KXMENWORLDCUP-26-FR') },
     { name: 'variants', description: 'Strategy-variant leaderboard: backtest signals segmented by named filters', getArgumentCompletions: usageHint('[--days N] [--min-edge N] [--min-volume N] [--resolved]', 'e.g. /variants --days 7 --resolved') },
     { name: 'paper', description: 'Paper-trading ledger: forward-test without exchange orders', getArgumentCompletions: usageHint('buy|sell <ticker> <count> [price] [yes|no] — or bare for the ledger view', 'e.g. /paper buy KXFED-26SEP-T3 10 40 yes') },
     { name: 'mandate', description: 'Show hard trading caps + kill-switch status' },
@@ -868,16 +870,16 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     }
 
     if (browseState.appState === 'event_list') {
-      // If the cached selector still matches, update labels in-place (no flicker)
+      // Event rows carry no hydrated model probabilities, so the cached
+      // selector's labels cannot go stale — reuse it as-is to avoid flicker.
       if (cachedBrowseSelector && cachedBrowseTheme === browseState.theme
           && cachedBrowseEventCount === browseState.events.length) {
-        updateBrowseMarketSelector(cachedBrowseSelector, browseState.events);
         tui.requestRender();
         return;
       }
-      const selector = createBrowseMarketSelector(
+      const selector = createBrowseEventSelector(
         browseState.events,
-        (eventTicker, marketTicker) => browseController.selectMarket(eventTicker, marketTicker),
+        (eventTicker) => browseController.selectEvent(eventTicker),
         () => browseController.cancelBrowse(),
         browseState.lastError,
         browseState.progressMessage,
@@ -890,7 +892,27 @@ export async function runCli(options?: { forceSetup?: boolean }) {
         `Browse: ${browseState.theme}`,
         `${browseState.events.length} events, ${browseState.events.reduce((n, e) => n + e.markets.length, 0)} markets`,
         selector,
-        'Enter to select · esc to exit',
+        'Enter to open an event · esc to exit',
+        focusTarget,
+      );
+      return;
+    }
+
+    if (browseState.appState === 'market_list' && browseState.selectedEvent) {
+      const event = browseState.selectedEvent;
+      const selector = createBrowseMarketSelector(
+        [event],
+        (eventTicker, marketTicker) => browseController.selectMarket(eventTicker, marketTicker),
+        () => browseController.cancelBrowse(),
+        browseState.lastError,
+        browseState.progressMessage,
+      );
+      const focusTarget = (selector as any)._browseList;
+      renderScreenView(
+        event.eventTicker,
+        `${event.title} — ${event.markets.length} market${event.markets.length !== 1 ? 's' : ''}`,
+        selector,
+        'Enter to select · esc to go back',
         focusTarget,
       );
       return;

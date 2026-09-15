@@ -21,9 +21,10 @@ coverage.json
 logs
 
 # Internal docs (not user-facing)
+# GUIDE.md is deliberately NOT here: README.md links to it, so excluding it
+# leaves a broken link on the npm package page.
 AGENTS.md
 CLAUDE.md
-GUIDE.md
 .claude
 .dexter
 .kalshi-deep-trading-bot

@@ -100,7 +100,7 @@ describe('handleReport', () => {
   test('normalizes URL + lowercase before lookup', async () => {
     let eventLookupUrl = '';
     installFetchMock((url) => {
-      if (url.includes('/v1/prediction-markets/events/')) {
+      if (url.includes('/v1/predictions/events/')) {
         // Capture the FIRST lookup (the user-input → event), not the later
         // re-lookup with the canonical event_ticker.
         if (!eventLookupUrl) eventLookupUrl = url;
@@ -126,7 +126,7 @@ describe('handleReport', () => {
     // market_ticker from outcome_probabilities before hitting the invoker.
     const kalshiMarketCalls: string[] = [];
     installFetchMock((url) => {
-      if (url.includes('/v1/prediction-markets/events/')) {
+      if (url.includes('/v1/predictions/events/')) {
         return jsonResponse({
           event_ticker: 'KXAAPLCEOCHANGE',
           name: 'When will Tim Cook leave Apple?',

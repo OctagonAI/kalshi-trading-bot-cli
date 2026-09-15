@@ -1,16 +1,21 @@
 /**
  * Typed wrappers over Octagon's Kalshi search/clusters/correlation/basket API.
- * Endpoints live under https://api.octagonai.co/v1/prediction-markets/kalshi/*.
+ * Endpoints live under https://api.octagonai.co/v1/predictions/kalshi/*.
+ * (The old /v1/prediction-markets/kalshi prefix is deprecated; the sub-paths
+ * and response shapes are identical.)
  *
  * Mirrors the pattern in octagon-events-api.ts:
  * - Fetch + Authorization: Bearer ${OCTAGON_API_KEY}
- * - 60s AbortController timeout per request
+ * - 60s request deadline (fetchWithDeadline), armed until the body is read
  * - Non-2xx → Error with status + body excerpt
  *
  * All endpoints are stateless from the CLI's perspective — no SQLite caching.
  */
 
-const KALSHI_API_BASE = 'https://api.octagonai.co/v1/prediction-markets/kalshi';
+import { fetchWithDeadline } from '../utils/http.js';
+import type { MetaCategory } from './theme-registry.js';
+
+const KALSHI_API_BASE = 'https://api.octagonai.co/v1/predictions/kalshi';
 const TIMEOUT_MS = 60_000;
 
 function buildQuery(params?: object): string {
@@ -30,6 +35,8 @@ async function kalshiApi<T>(
   opts?: {
     params?: object;
     body?: unknown;
+    /** Override the base URL — used for the venue-agnostic routes. */
+    base?: string;
   },
 ): Promise<T> {
   const apiKey = process.env.OCTAGON_API_KEY;
@@ -37,24 +44,16 @@ async function kalshiApi<T>(
     throw new Error('OCTAGON_API_KEY not set. Get one at https://app.octagonai.co');
   }
 
-  const url = `${KALSHI_API_BASE}${path}${method === 'GET' ? buildQuery(opts?.params) : ''}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const url = `${opts?.base ?? KALSHI_API_BASE}${path}${method === 'GET' ? buildQuery(opts?.params) : ''}`;
 
-  let resp: Response;
-  try {
-    resp = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(method === 'POST' && opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
+  const resp = await fetchWithDeadline(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(method === 'POST' && opts?.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+  }, TIMEOUT_MS);
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => '');
@@ -286,6 +285,73 @@ export interface SearchMarketsParams {
 
 export function searchKalshiMarkets(params: SearchMarketsParams): Promise<PagedResult<KalshiMarketRow>> {
   return kalshiApi<PagedResult<KalshiMarketRow>>('GET', '/markets', { params });
+}
+
+// ─── Venue-agnostic event search ────────────────────────────────────────────
+
+/** Venue-agnostic base. The same route backs the Polymarket CLI, via `venues`. */
+const EVENTS_API_BASE = 'https://api.octagonai.co/v1/predictions/markets';
+const OCTAGON_VENUE = 'kalshi';
+
+/**
+ * Keys this endpoint understands. Anything else must be dropped rather than
+ * forwarded: an unrecognised parameter makes it return ZERO ROWS silently
+ * instead of erroring, which is indistinguishable from "no results".
+ */
+const EVENT_SEARCH_KEYS = ['q', 'meta_category', 'report', 'limit', 'cursor'] as const;
+
+/** One row per event, represented by its best-matching market. */
+export interface EventSearchRow {
+  /** Venue-prefixed. Prefer `native_event_ticker` for display and drill-down. */
+  event_ticker: string;
+  market_ticker?: string | null;
+  title?: string | null;
+  sub_title?: string | null;
+  category?: string | null;
+  venue?: string | null;
+  native_ticker?: string | null;
+  native_event_ticker?: string | null;
+  /** The representative market's last price — not an event aggregate. */
+  last_price?: number | null;
+  /** The representative market's 24h volume — not an event aggregate. */
+  volume_24h?: number | null;
+  event_status?: string | null;
+  close_time?: string | null;
+  has_report?: boolean;
+}
+
+export interface SearchEventsParams {
+  q?: string;
+  /**
+   * Typed as MetaCategory, not string, on purpose: the filter is
+   * case-sensitive and a wrong case returns zero rows rather than an error, so
+   * the value must come from the theme registry. This makes a lowercase
+   * literal a compile error.
+   */
+  meta_category?: MetaCategory;
+  report?: 'all' | 'ready' | 'none';
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Search events across the Kalshi universe.
+ *
+ * Note the deliberate omissions: this route accepts no `sort_by`,
+ * `min_volume_24h`, `close_before` or `category`. Callers needing those must
+ * use searchKalshiMarkets instead — passing them here would silently empty the
+ * result set. Ordering is server-defined but stable across repeated requests.
+ */
+export function searchOctagonEvents(params: SearchEventsParams): Promise<PagedResult<EventSearchRow>> {
+  const safe: Record<string, unknown> = { venues: OCTAGON_VENUE };
+  for (const key of EVENT_SEARCH_KEYS) {
+    const value = (params as Record<string, unknown>)[key];
+    if (value !== undefined) safe[key] = value;
+  }
+  return kalshiApi<PagedResult<EventSearchRow>>('GET', '/events/search', {
+    params: safe,
+    base: EVENTS_API_BASE,
+  });
 }
 
 export interface SimilarParams {

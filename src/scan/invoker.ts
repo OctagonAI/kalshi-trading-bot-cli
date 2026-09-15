@@ -1,5 +1,6 @@
 import { callKalshiApi, KalshiApiError } from '../tools/kalshi/api.js';
 import { logger } from '../utils/logger.js';
+import { fetchWithDeadline } from '../utils/http.js';
 import type { OctagonInvoker, OctagonVariant } from './types.js';
 import { fetchReportVersions, generateReportAndWait, OctagonReportsApiError } from './octagon-reports-api.js';
 import { looksLikeTicker } from '../commands/similar.js';
@@ -192,22 +193,17 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
       await new Promise((r) => setTimeout(r, delay));
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
     let resp: Response;
     try {
-      resp = await fetch(`${baseUrl}/responses`, {
+      resp = await fetchWithDeadline(`${baseUrl}/responses`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: reqBody,
-        signal: controller.signal,
-      });
+      }, timeoutMs);
     } catch (err) {
-      clearTimeout(timer);
       if (err instanceof DOMException && err.name === 'AbortError') {
         const secs = Math.round(timeoutMs / 1000);
         throw new Error(
@@ -215,8 +211,6 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
         );
       }
       throw err;
-    } finally {
-      clearTimeout(timer);
     }
 
     if (resp.ok) {

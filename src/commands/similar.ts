@@ -92,6 +92,12 @@ export function formatSimilarHuman(data: SimilarResponse): string {
     rows,
   ));
   lines.push('');
-  lines.push('Lower distance = closer cosine similarity.');
+  // Octagon removed the embedding layer: `distance` is row_number()/1000, i.e.
+  // rank order, and ranking is a taxonomy walk (ticker anchor) or keyword
+  // relevance (-q anchor). It is not a similarity score.
+  lines.push(data.anchor_ticker
+    ? 'Ranked by taxonomy: same event, then series, then category — each by 24h volume.'
+    : 'Ranked by keyword relevance to the query text.');
+  lines.push('Distance is that rank order, not a similarity score.');
   return lines.join('\n');
 }

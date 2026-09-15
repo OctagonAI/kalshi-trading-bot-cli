@@ -12,7 +12,9 @@ function buildTopics(ctx: HelpContext): Record<string, string> {
   return {
     search: `**${p}search** — Discovery (Octagon-powered when OCTAGON_API_KEY is set)
 
-${p}search [theme|ticker|query]  Full-text market search (server-side when key is set, else local index)
+${p}search [theme|query]         Find EVENTS matching a theme or free text
+${p}search <event_ticker>        Drill into one event: list its markets
+${p}search <theme>:<subtheme>    Narrow a theme, e.g. crypto:btc, sports:baseball
 ${p}search themes                List all available themes and subcategories
 ${p}search edge                  Edge ranking from latest Octagon run (server-side) or local cache
 ${p}search edge --min-edge 30    Markets with ≥30pp edge
@@ -31,12 +33,20 @@ Search flags (server-side path):
   --aggregate-by series Roll up results by series (calls series rollup)
   --active-only         Drop non-active markets (defensive; the live universe is active by default)
 
+Results are events by default — markets live inside an event, so pass an event
+ticker to see them. A theme resolves to Octagon's cross-venue category rather
+than matching the word itself. Any market-level filter (--min-volume,
+--close-before, --sort-by, --category, --series) searches markets instead,
+since the event route does not support them.
+
 Examples:
-  ${p}search crypto
+  ${p}search crypto                  events in the Crypto category
+  ${p}search crypto:btc              narrowed to BTC
+  ${p}search KXBTCD-33MAY2100        that event's markets
   ${p}search "bitcoin price" --min-volume 10000
   ${p}search edge --min-edge 30 --category crypto
 
-Tip: ${p}similar gives semantic match (catches "Bitcoin pierce six figures" ↔ "BTC > $100k").`,
+Tip: ${p}similar walks the taxonomy from a ticker — same event, then series, then category.`,
 
     portfolio: `**${p}portfolio** — Account state
 
@@ -183,21 +193,24 @@ For parallel bunx, pre-warm the cache serially before fanning out:
 
 See README → Scripting & Parallel Use for the full picture.`,
 
-    similar: `**${p}similar** — Semantic market search (Octagon-powered)
+    similar: `**${p}similar** — Related markets (Octagon-powered)
 
-${p}similar <ticker>                  Markets near this ticker by embedding distance
-${p}similar -q "free-text query"      Markets matching free-text intent (server-side embed)
-${p}similar <ticker> --top-k 25       Return top-25 nearest neighbors
+${p}similar <ticker>                  Markets related to this ticker, ranked by taxonomy
+${p}similar -q "free-text query"      Markets matching the text, ranked by keyword relevance
+${p}similar <ticker> --top-k 25       Return the top 25
 ${p}similar -q "..." --category crypto --min-volume 10000 --close-before 2026-08-19T00:00:00Z
 
 Flags:
-  --top-k <n>             Number of neighbors (default 25, max 100)
+  --top-k <n>             Number of results (default 25, max 100)
   --category <name>       Restrict to a Kalshi category
   --min-volume <n>        Floor on 24h volume
   --close-before <iso>    Only markets closing before this timestamp
   --json                  JSON output
 
-Catches matches keyword search misses — "Will Bitcoin pierce six figures" ↔ "BTC over $100k".`,
+Ranking: a ticker anchor walks the taxonomy — same event, then series, then
+category, each ordered by 24h volume. A -q anchor ranks by keyword relevance.
+The "distance" column is that rank order (row number / 1000), not a similarity
+score: Octagon removed the embedding layer.`,
 
     clusters: `**${p}clusters** — Browse Octagon clusters (thematic + behavioral)
 
@@ -364,35 +377,40 @@ analysis_last_updated when available — so you can decide whether to --refresh.
 Error paths (missing ticker, event not found, no report body yet) print just
 the error message instead.`,
 
-    trust: `**${p}trust** — Trader Trust scorecard (market-integrity metrics)
+    trust: `**${p}trust** — Octagon Trust Index for an event
 
-${p}trust <event_ticker>                       Table across all markets in the event
+${p}trust <event_ticker>                       Trust Index (overall score + profile)
+${p}trust <event_ticker> --verbose             …plus per-contract market quality
 ${p}trust <event_ticker> --market <market>     Single-market detail card
 ${p}trust <event_ticker> --market <market> --verbose
-                                            Include raw evidence + confidence/freshness
+                                            Include raw evidence + confidence
 
-Six per-market scores (each 0-100), produced by Octagon's deterministic
-Trader Trust calculation:
+The Trust Index (0-100, higher = better) combines two axes:
 
-  trader_trust       Overall composite                      (higher = better)
-  liquidity_quality  Depth/spread/fill behavior             (higher = better)
-  move_quality       Price-move plausibility                (higher = better)
-  resolution_risk    Resolution clarity (higher = clearer)  (higher = better)
-  market_avoid       Avoidance signal                       (higher = WORSE)
-  quote_risk         Quote-side risk                        (higher = WORSE)
+  Integrity      Market integrity, info fairness, resolution quality
+  Trade quality  Cost to trade, including whether a $1,000 order can fill
+
+It is a weighted blend with hard caps: a critically weak safety pillar, or a
+severe trading anomaly, caps the total regardless of the rest. The trust
+profile breaks out the three integrity pillars and the event's liquidity,
+move quality and rule clarity.
+
+The --market detail card shows four per-market scores (each 0-100, higher =
+better): market_quality (composite), liquidity, move_quality and
+resolution_clarity.
 
 Flags:
   --market <ticker>   Drill into one market in the event
-  --verbose           Show evidence (raw metrics), confidence, data freshness
+  --verbose           Add per-contract market quality to the Trust Index; with
+                      --market, show evidence (raw metrics) and confidence
   --json              JSON envelope output
 
 Notes:
   - When trader_trust_json is null (older reports), prints "no trust scorecard for
     this event yet" — not an error.
-  - Higher-is-better vs. higher-is-worse semantics differ per score; tables and
-    detail views color and annotate accordingly.
-  - "(as of report time)" is shown for scores whose data_freshness is
-    point_in_time (e.g. quote_risk, liquidity_quality on snapshot reports).`,
+  - A score can be unscored (not applicable, or insufficient data); it renders
+    as "—", never as 0.
+  - Detail cards show fair value, bid/ask and spread in cents.`,
 
     events: `**${p}events** — Octagon event rollups (event ↔ outcome ladder)
 
@@ -558,8 +576,8 @@ Discovery:
   search --aggregate-by series  Roll up results to series level
   search themes                 (Legacy) Kalshi category labels
   search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
-  similar <ticker>              Semantic neighbors (embedding distance)
-  similar -q "free text"        Semantic search by natural-language query
+  similar <ticker>              Related markets (taxonomy walk)
+  similar -q "free text"        Related markets by keyword relevance
   clusters [--label X]          Browse thematic clusters
   clusters <id>                 List markets in a cluster
   clusters --behavioral         Behavioral clusters (30-day return vectors)
@@ -646,8 +664,8 @@ Discovery:
   /search --aggregate-by series  Roll up results to series level
   /search themes                 (Legacy) Kalshi category labels
   /search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
-  /similar <ticker>              Semantic neighbors (embedding distance)
-  /similar -q "free text"        Semantic search by natural-language query
+  /similar <ticker>              Related markets (taxonomy walk)
+  /similar -q "free text"        Related markets by keyword relevance
   /clusters [--label X]          Browse thematic clusters
   /clusters <id>                 List markets in a cluster
   /clusters --behavioral         Behavioral clusters (30-day return vectors)

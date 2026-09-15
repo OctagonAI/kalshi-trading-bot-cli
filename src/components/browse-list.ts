@@ -102,6 +102,52 @@ export function createBrowseMarketSelector(
   return container;
 }
 
+/**
+ * Event-level list: one row per event, not one per market.
+ *
+ * The list used to flatten every event's markets into sibling rows, so an event
+ * with 40 outcomes filled the screen and there was no way to open it. Rows
+ * arrive already sorted by total market volume.
+ */
+export function createBrowseEventSelector(
+  events: BrowseEventRow[],
+  onSelect: (eventTicker: string) => void,
+  onCancel: () => void,
+  errorMessage?: string | null,
+  progressMessage?: string | null,
+): Container {
+  const container = new Container();
+
+  if (progressMessage) {
+    container.addChild(new Text(theme.muted(progressMessage), 0, 0));
+  }
+  if (errorMessage) {
+    container.addChild(new Text(theme.bold(theme.warning(errorMessage)), 0, 0));
+  }
+
+  const header = `${pad('Event', 24)} ${pad('Title', 50)} ${pad('Mkts', 5)} ${pad('Category', 18)}`;
+  container.addChild(new Text(theme.muted(header), 0, 0));
+
+  if (events.length === 0) {
+    container.addChild(new Text(theme.muted('No events found.'), 0, 0));
+    container.addChild(new Text(theme.muted('esc to go back'), 0, 0));
+    return container;
+  }
+
+  const items: SelectItem[] = events.map((ev) => ({
+    value: ev.eventTicker,
+    label: `${pad(ev.eventTicker, 24)} ${pad(ev.title, 50)} ${pad(String(ev.markets.length), 5)} ${pad(ev.category || '-', 18)}`,
+  }));
+
+  const list = new VimSelectList(items, Math.min(items.length, 20), selectListTheme);
+  list.onSelect = (item) => onSelect(item.value);
+  list.onCancel = () => onCancel();
+  container.addChild(list);
+  (container as any)._browseList = list;
+
+  return container;
+}
+
 export function createBrowseActionSelector(
   onSelect: (action: string) => void,
   onCancel: () => void,
