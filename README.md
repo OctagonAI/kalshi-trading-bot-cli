@@ -75,12 +75,30 @@ Type help for commands, or just ask a question.
 
 > search crypto
 
-  Ticker                  Title                          Last    Volume
-  KXBTC-26APR-B95000      Bitcoin above $95k by Apr 30   $0.58   12,841
-  KXBTC-26APR-B100000     Bitcoin above $100k by Apr 30  $0.31    8,203
-  KXETH-26APR-B2000       Ethereum above $2k by Apr 30   $0.72    5,419
+Events matching theme crypto — 3 shown
 
-3 markets found
+┌──────────────────────┬───────────────────────────────────────┬───────┬──────────┬──────────┬────────────┐
+│ Event                │ Title                                 │ Last* │ 24h Vol* │ Category │ Closes     │
+├──────────────────────┼───────────────────────────────────────┼───────┼──────────┼──────────┼────────────┤
+│ KXBTCD-26SEP1817     │ BTC price on Sep 18, 2026 at 5pm EDT? │ $0.09 │ 65.3k    │ Crypto   │ 2026-09-18 │
+│ KXBTC2026200-27JAN01 │ Will Bitcoin be above $200k by 2027?  │ $0.03 │ 92.6k    │ Crypto   │ 2027-01-01 │
+│ KXETHD-26SEP1817     │ ETH price on Sep 18, 2026 at 5pm EDT? │ $0.04 │ 9.1k     │ Crypto   │ 2026-09-18 │
+└──────────────────────┴───────────────────────────────────────┴───────┴──────────┴──────────┴────────────┘
+
+* of the event's best-matching market, not an event total.
+Drill into one event: search KXBTCD-26SEP1817
+
+> search KXBTCD-26SEP1817
+
+Markets in KXBTCD-26SEP1817 — 3 shown
+
+┌───────────┬──────────────────┬───────┬─────────┬────────────┐
+│ Contract  │ Strike           │ Last  │ 24h Vol │ Closes     │
+├───────────┼──────────────────┼───────┼─────────┼────────────┤
+│ T64999.99 │ $65,000 or above │ $0.97 │ 5.3k    │ 2026-09-18 │
+│ T69999.99 │ $70,000 or above │ $0.95 │ 7.4k    │ 2026-09-18 │
+│ T70999.99 │ $71,000 or above │ $0.94 │ 12.0k   │ 2026-09-18 │
+└───────────┴──────────────────┴───────┴─────────┴────────────┘
 
 > analyze KXBTC-26APR-B95000
 
