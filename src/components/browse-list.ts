@@ -12,12 +12,38 @@ function fmtPct(val: number | null): string {
   return `${(val * 100).toFixed(1)}%`;
 }
 
+/**
+ * A contract's own identity: the market ticker minus its event prefix.
+ * `KXBTCD-33APR0610-T59599.99` → `T59599.99`.
+ *
+ * Kept local rather than imported from the command layer — this is three lines,
+ * and browse-list.ts is a TUI component that otherwise pulls in nothing from
+ * `commands/`.
+ */
+function contractOf(marketTicker: string, eventTicker: string): string {
+  const prefix = `${eventTicker}-`;
+  return marketTicker.startsWith(prefix) ? marketTicker.slice(prefix.length) : marketTicker;
+}
+
+/**
+ * Within one event, show whichever of label/title actually varies.
+ *
+ * A Kalshi strike ladder carries one title on all 188 markets and differs only
+ * by label, so the old Title column showed the same string on every row while
+ * the 26-char ticker was cut to 19 — losing the strike digits too.
+ */
+function describeMarket(m: BrowseMarketRow, labelsVary: boolean): string {
+  if (labelsVary && m.label) return m.label;
+  return m.title;
+}
+
 function buildMarketItems(events: BrowseEventRow[]): SelectItem[] {
   const items: SelectItem[] = [];
   for (const ev of events) {
+    const labelsVary = new Set(ev.markets.map((m) => m.label ?? '')).size > 1;
     for (const m of ev.markets) {
-      const ticker = pad(m.ticker, 20);
-      const title = pad(m.title, 48);
+      const contract = pad(contractOf(m.ticker, ev.eventTicker), 14);
+      const what = pad(describeMarket(m, labelsVary), 40);
       const mktPct = pad(fmtPct(m.marketProb), 7);
       const isPending = ev.pending === true;
       const modelPct = pad(isPending && m.modelProb === null ? '...' : fmtPct(m.modelProb), 7);
@@ -26,7 +52,7 @@ function buildMarketItems(events: BrowseEventRow[]): SelectItem[] {
 
       items.push({
         value: JSON.stringify({ eventTicker: ev.eventTicker, marketTicker: m.ticker }),
-        label: `${ticker} ${title} ${mktPct} ${modelPct} ${edgeStr} ${conf}`,
+        label: `${contract} ${what} ${mktPct} ${modelPct} ${edgeStr} ${conf}`,
       });
     }
   }
@@ -74,7 +100,7 @@ export function createBrowseMarketSelector(
   }
 
   // Header row
-  const header = `${pad('Ticker', 20)} ${pad('Title', 48)} ${pad('Mkt %', 7)} ${pad('Model%', 7)} ${pad('Edge', 7)} ${pad('Conf', 8)}`;
+  const header = `${pad('Contract', 14)} ${pad('Strike / Title', 40)} ${pad('Mkt %', 7)} ${pad('Model%', 7)} ${pad('Edge', 7)} ${pad('Conf', 8)}`;
   container.addChild(new Text(theme.muted(header), 0, 0));
 
   if (items.length === 0) {

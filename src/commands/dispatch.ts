@@ -31,8 +31,8 @@ import { handleClusters, formatClustersHuman } from './clusters.js';
 import { handlePeers, formatPeersHuman } from './peers.js';
 import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
-import { searchKalshiMarkets, getMarketsWithEdge, searchOctagonEvents, getEventMarkets } from '../scan/octagon-kalshi-api.js';
-import { formatMarketSearchHuman, formatMarketsWithEdgeHuman, formatEventSearchHuman } from './search-remote.js';
+import { getMarketsWithEdge, searchOctagonEvents, searchOctagonMarkets } from '../scan/octagon-kalshi-api.js';
+import { formatMarketSearchHuman, formatMarketsWithEdgeHuman, formatEventSearchHuman, formatEventMarketsHuman } from './search-remote.js';
 import { parseThemeQuery } from '../scan/theme-registry.js';
 import { handleEvents, formatEventsHuman } from './events.js';
 import { handleTrust, formatTrustHuman } from './trust.js';
@@ -260,24 +260,22 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         // an event from a market (KXNEWPOPE-70 vs KXNEWPOPE-70-PPIZ, while
         // KXELONMARS-99's only market IS KXELONMARS-99), so resolution decides:
         // ask for the event's markets and fall through if there are none.
+        //
+        // Errors deliberately propagate. The old bare catch here reported a 401,
+        // a timeout and a malformed body all as "not an event ticker", then fell
+        // through to a search that printed a clean zero-row table.
         if (!usesMarketFilters && query && looksLikeTicker(query)) {
-          try {
-            const drill = await getEventMarkets(query.toUpperCase(), { limit: args.limit ?? 30 });
-            if (drill.data.length > 0) {
-              const drillPage = {
-                data: drill.data,
-                next_cursor: drill.next_cursor ?? null,
-                has_more: !!drill.has_more,
-              };
-              if (json) {
-                console.log(JSON.stringify(wrapSuccess('search', { kind: 'markets', ...drillPage })));
-              } else {
-                console.log(formatMarketSearchHuman(query.toUpperCase(), drillPage));
-              }
-              return;
+          const drill = await searchOctagonMarkets({
+            event_ticker: query.toUpperCase(),
+            limit: args.limit ?? 30,
+          });
+          if (drill.data.length > 0) {
+            if (json) {
+              console.log(JSON.stringify(wrapSuccess('search', { kind: 'markets', ...drill })));
+            } else {
+              console.log(formatEventMarketsHuman(query.toUpperCase(), drill));
             }
-          } catch {
-            // Not an event ticker — fall through to search.
+            return;
           }
         }
 
@@ -320,10 +318,13 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
 
         // sort_by is now server-side (true top-N across the whole universe);
         // series_prefix lets us tree-browse (KXBTC matches all Bitcoin series).
+        // This is the venue-agnostic route, same as the drill-down above — it
+        // accepts every filter the Kalshi-only one did, so both CLIs now answer
+        // market queries from one corpus.
         const serverSortBy = (args.sortBy === 'volume_24h' || args.sortBy === 'close_time' || args.sortBy === 'last_price')
           ? args.sortBy
           : undefined;
-        const page = await searchKalshiMarkets({
+        const page = await searchOctagonMarkets({
           q: query,
           category: args.category,
           series_ticker: args.seriesTicker,

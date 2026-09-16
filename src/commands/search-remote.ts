@@ -4,7 +4,7 @@
  * OCTAGON_API_KEY is set; the legacy local-SQLite paths remain as fallback.
  */
 import { formatTable } from './scan-formatters.js';
-import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse, EventSearchRow } from '../scan/octagon-kalshi-api.js';
+import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse, EventSearchRow, MarketSearchRow } from '../scan/octagon-kalshi-api.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
@@ -75,7 +75,73 @@ export function eventIdOf(e: EventSearchRow): string {
   return e.native_event_ticker ?? e.event_ticker;
 }
 
-export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiMarketRow>): string {
+/**
+ * The contract's own identity: the market ticker minus its event prefix.
+ * `KXBTCD-33APR0610-T59599.99` → `T59599.99`. Inside one event the prefix is
+ * the same on every row, so showing it costs the 19 columns that used to
+ * truncate away the part that actually differs.
+ */
+export function contractOf(marketTicker: string, eventTicker: string): string {
+  const prefix = `${eventTicker}-`;
+  return marketTicker.startsWith(prefix) ? marketTicker.slice(prefix.length) : marketTicker;
+}
+
+/**
+ * Pick the column that actually distinguishes rows within this event.
+ *
+ * The two venues are mirror images. A Kalshi strike ladder shares one title
+ * ("Bitcoin price on Apr 6, 2033?") and differs by subtitle ("$59,600 or
+ * above"); a Polymarket event shares a subtitle ("Yes") and differs by title
+ * ("Lara Trump"). Choosing by which field varies handles both without a
+ * venue switch.
+ */
+function labelColumn(rows: MarketSearchRow[]): { header: string; pick: (m: MarketSearchRow) => string } {
+  const subOf = (m: MarketSearchRow) => m.yes_subtitle ?? m.subtitle ?? '';
+  const distinctSubs = new Set(rows.map(subOf)).size;
+  const distinctTitles = new Set(rows.map((m) => m.title ?? '')).size;
+  if (distinctSubs > 1 && distinctSubs >= distinctTitles) {
+    return { header: 'Strike', pick: (m) => subOf(m) || '-' };
+  }
+  return { header: 'Outcome', pick: (m) => m.title ?? '-' };
+}
+
+/**
+ * One event's markets. Rows arrive unordered from the API (a ladder comes back
+ * T76999.99, T77749.99, T77499.99, …) and `sort_by` offers no strike option, so
+ * they are ordered here.
+ */
+export function formatEventMarketsHuman(eventTicker: string, page: PagedResult<MarketSearchRow>): string {
+  const lines: string[] = [];
+  const more = page.has_more ? ' (more available)' : '';
+  lines.push(`Markets in ${eventTicker} — ${page.data.length} shown${more}`);
+  lines.push('');
+
+  if (page.data.length === 0) {
+    lines.push(`No markets found for ${eventTicker}.`);
+    return lines.join('\n');
+  }
+
+  const { header, pick } = labelColumn(page.data);
+  const sorted = [...page.data].sort((a, b) =>
+    contractOf(a.native_ticker ?? a.market_ticker, eventTicker).localeCompare(
+      contractOf(b.native_ticker ?? b.market_ticker, eventTicker),
+      undefined,
+      { numeric: true },
+    ),
+  );
+
+  const rows: string[][] = sorted.map((m) => [
+    contractOf(m.native_ticker ?? m.market_ticker, eventTicker),
+    truncate(pick(m), 44),
+    fmtMoney(m.last_price ?? m.yes_ask),
+    fmtVol(m.volume_24h),
+    fmtCloseDate(m.close_time ?? null),
+  ]);
+  lines.push(formatTable(['Contract', header, 'Last', '24h Vol', 'Closes'], rows));
+  return lines.join('\n');
+}
+
+export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiMarketRow | MarketSearchRow>): string {
   const lines: string[] = [];
   const more = page.has_more ? ' (more available)' : '';
   lines.push(`Markets matching "${query}" — ${page.data.length} shown${more}`);
@@ -92,7 +158,7 @@ export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiM
     fmtMoney(m.last_price ?? m.yes_ask),
     fmtVol(m.volume_24h),
     m.category ?? '-',
-    fmtCloseDate(m.close_time),
+    fmtCloseDate(m.close_time ?? null),
   ]);
   lines.push(formatTable(['Ticker', 'Title', 'Last', '24h Vol', 'Category', 'Closes'], rows));
   return lines.join('\n');

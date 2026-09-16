@@ -93,6 +93,12 @@ export function isMarketActive(m: MarketRow): boolean {
 export interface BrowseMarketRow {
   ticker: string;
   title: string;
+  /**
+   * The per-contract label — a Kalshi strike ("$59,600 or above"). Within one
+   * event `title` is usually identical on every market, so this is the only
+   * field that tells two rows apart; null when the venue leaves it empty.
+   */
+  label: string | null;
   marketProb: number | null;
   modelProb: number | null;
   edge: number | null;
@@ -616,6 +622,9 @@ export class BrowseController {
     return {
       ticker: m.ticker,
       title: m.title ?? m.subtitle ?? m.ticker,
+      // The index persists yes_sub_title but not subtitle, so that is the one
+      // that actually arrives here for index-sourced markets.
+      label: m.yes_sub_title ?? m.subtitle ?? null,
       marketProb,
       modelProb,
       edge,

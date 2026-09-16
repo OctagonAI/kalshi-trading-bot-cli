@@ -354,6 +354,79 @@ export function searchOctagonEvents(params: SearchEventsParams): Promise<PagedRe
   });
 }
 
+/**
+ * Keys the venue-agnostic markets route understands. Same hazard as the events
+ * route: an unrecognised parameter silently empties the result set.
+ */
+const MARKET_SEARCH_KEYS = [
+  'q', 'category', 'series_ticker', 'series_prefix', 'event_ticker',
+  'close_before', 'min_volume_24h', 'sort_by', 'boost_category', 'limit', 'cursor',
+] as const;
+
+/** One market row from the venue-agnostic markets route. */
+export interface MarketSearchRow {
+  market_ticker: string;
+  native_ticker?: string | null;
+  venue?: string | null;
+  /** Venue-prefixed. This is the form `event_ticker` filtering expects. */
+  event_ticker: string;
+  series_ticker?: string | null;
+  title: string;
+  subtitle?: string | null;
+  /** The per-contract label — the strike on a Kalshi ladder. */
+  yes_subtitle?: string | null;
+  no_subtitle?: string | null;
+  status?: string | null;
+  close_time?: string | null;
+  last_price?: number | null;
+  yes_bid?: number | null;
+  yes_ask?: number | null;
+  volume?: number | null;
+  volume_24h?: number | null;
+  category?: string | null;
+  event_name?: string | null;
+}
+
+export interface SearchOctagonMarketsParams {
+  q?: string;
+  category?: string;
+  series_ticker?: string;
+  series_prefix?: string;
+  /**
+   * The venue-prefixed identifier from `EventSearchRow.event_ticker`, not the
+   * native one. Kalshi's native ticker is already prefix-free so the two
+   * coincide; Polymarket's is `polymarket__<slug>`, and passing the native slug
+   * there returns zero rows.
+   */
+  event_ticker?: string;
+  close_before?: string;
+  min_volume_24h?: number;
+  sort_by?: 'volume_24h' | 'close_time' | 'last_price';
+  boost_category?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Search markets across venues. Unlike `searchKalshiMarkets` this is the
+ * venue-agnostic route, so both CLIs answer from the same corpus — and unlike
+ * the events route it accepts the full filter set, which is what lets
+ * `--min-volume` and friends keep working.
+ */
+export function searchOctagonMarkets(
+  params: SearchOctagonMarketsParams,
+): Promise<PagedResult<MarketSearchRow>> {
+  const safe: Record<string, unknown> = { venues: OCTAGON_VENUE };
+  for (const key of MARKET_SEARCH_KEYS) {
+    const value = (params as Record<string, unknown>)[key];
+    if (value !== undefined) safe[key] = value;
+  }
+  return kalshiApi<PagedResult<MarketSearchRow>>('GET', '/search', {
+    params: safe,
+    base: EVENTS_API_BASE,
+  });
+}
+
 export interface SimilarParams {
   anchor_ticker?: string;
   q?: string;
