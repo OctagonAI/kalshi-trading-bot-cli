@@ -262,3 +262,53 @@ export async function fetchAllPages<T>(
 
   return results;
 }
+
+/**
+ * Page through a cursor-paginated endpoint, handing each page to `onPage`
+ * instead of accumulating it.
+ *
+ * Separate from fetchAllPages rather than a flag on it, for two reasons: the
+ * caller usually wants the rows written as they land (so the index is usable
+ * before the last page arrives), and the full open-events set with nested
+ * markets is ~190 MB of JSON — holding all of it to return one array is what
+ * the 20-page cap was quietly protecting against.
+ *
+ * Returns the number of rows handled, and whether the cap cut the walk short.
+ */
+export async function streamAllPages<T>(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+  dataKey: string,
+  maxPages: number,
+  onPage: (rows: T[]) => void | Promise<void>,
+  onProgress?: (info: { fetchedItems: number; page: number; maxPages: number }) => void
+): Promise<{ count: number; truncated: boolean }> {
+  let cursor: string | undefined;
+  let page = 0;
+  let count = 0;
+
+  while (page < maxPages) {
+    const response = await callKalshiApi('GET', path, {
+      params: cursor ? { ...params, cursor } : params,
+    });
+
+    const data = response[dataKey] as T[] | undefined;
+    if (!data || data.length === 0) break;
+
+    await onPage(data);
+    count += data.length;
+    cursor = response.cursor as string | undefined;
+    page++;
+    onProgress?.({ fetchedItems: count, page, maxPages });
+    if (!cursor) break;
+  }
+
+  const truncated = Boolean(cursor) && page >= maxPages;
+  if (truncated) {
+    logger.warn(
+      `[Kalshi API] ${path} truncated at the ${maxPages}-page cap with more pages available (${count} ${dataKey} so far)`
+    );
+  }
+
+  return { count, truncated };
+}
