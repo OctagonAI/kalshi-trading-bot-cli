@@ -777,6 +777,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   let cachedBrowseSelector: Container | null = null;
   let cachedBrowseTheme = '';
   let cachedBrowseEventCount = 0;
+  let cachedBrowseStatus = '';
 
   const renderSelectionOverlay = () => {
     // Setup wizard overlay
@@ -872,8 +873,13 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     if (browseState.appState === 'event_list') {
       // Event rows carry no hydrated model probabilities, so the cached
       // selector's labels cannot go stale — reuse it as-is to avoid flicker.
+      // Its error and progress lines can, though: the selector renders both, and
+      // either can change while the theme and event count stay put, so they are
+      // part of the key.
+      const browseStatus = `${browseState.lastError ?? ''}\u0000${browseState.progressMessage ?? ''}`;
       if (cachedBrowseSelector && cachedBrowseTheme === browseState.theme
-          && cachedBrowseEventCount === browseState.events.length) {
+          && cachedBrowseEventCount === browseState.events.length
+          && cachedBrowseStatus === browseStatus) {
         tui.requestRender();
         return;
       }
@@ -887,6 +893,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       cachedBrowseSelector = selector;
       cachedBrowseTheme = browseState.theme;
       cachedBrowseEventCount = browseState.events.length;
+      cachedBrowseStatus = browseStatus;
       const focusTarget = (selector as any)._browseList;
       renderScreenView(
         `Browse: ${browseState.theme}`,
