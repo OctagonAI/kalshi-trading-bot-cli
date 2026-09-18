@@ -279,18 +279,8 @@ export function pruneStaleEvents(db: Database, staleBefore: number): number {
       doomed.push(r.event_ticker);
       continue;
     }
-    // isActiveMarketRecord checks status and close_time but not `result`, so a
-    // market that settled while still flagged active reads as tradeable there.
-    // browse.ts's isMarketActive does check it; resolved markets are precisely
-    // what this prune exists to evict, so the check is applied here rather than
-    // by changing the shared helper, which has call sites beyond this one.
-    const tradeable = (m: Record<string, unknown>) => {
-      if (!isActiveMarketRecord(m, nowIso)) return false;
-      const result = m.result;
-      return !(typeof result === 'string' && result !== '');
-    };
     const markets = parseMarketsJsonSafe(r.markets_json);
-    if (markets.length > 0 && !markets.some(tradeable)) {
+    if (markets.length > 0 && !markets.some((m) => isActiveMarketRecord(m, nowIso))) {
       doomed.push(r.event_ticker);
     }
   }

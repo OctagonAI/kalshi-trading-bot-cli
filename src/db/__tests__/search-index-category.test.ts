@@ -11,6 +11,7 @@ interface Seed {
   tags?: string;
   volume?: number;
   closed?: boolean;
+  result?: string;
 }
 
 function seed(db: Database, rows: Seed[]): void {
@@ -28,7 +29,7 @@ function seed(db: Database, rows: Seed[]): void {
           yes_sub_title: 'yes',
           status: r.closed ? 'closed' : 'active',
           close_time: '2099-01-01T00:00:00Z',
-          result: '',
+          result: r.result ?? '',
           volume: r.volume ?? 100,
         } as unknown as KalshiMarket,
       ],
@@ -101,5 +102,49 @@ describe('searchEventIndex categoryLabels', () => {
     ]);
     expect(searchEventIndex(db, '', 50, { categoryLabels: ['Crypto'] }).map((r) => r.event_ticker))
       .toEqual(['KXBIG', 'KXSMALL']);
+  });
+});
+
+describe('searchEventIndex tradeable predicate', () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = createDb(':memory:');
+  });
+  afterEach(() => {
+    db.close();
+  });
+
+  test('an event whose only market has settled is not returned', () => {
+    // status alone does not mean tradeable: a market can settle upstream while
+    // the index still carries status 'active'.
+    seed(db, [
+      { ticker: 'SETTLED', title: 'crypto settled', category: 'Crypto', tags: 'Crypto', result: 'yes' },
+      { ticker: 'LIVE', title: 'crypto live', category: 'Crypto', tags: 'Crypto' },
+    ]);
+
+    const got = searchEventIndex(db, '', 30, { categoryLabels: ['Crypto'] });
+    expect(got.map((e) => e.event_ticker)).toEqual(['LIVE']);
+  });
+
+  test('a settled market contributes no volume to the ranking', () => {
+    // The filter and the ranking have to agree, or a settled market keeps
+    // pushing its event up the list after it stops being tradeable.
+    seed(db, [
+      { ticker: 'MIXED', title: 'crypto mixed', category: 'Crypto', tags: 'Crypto', volume: 10 },
+      { ticker: 'BUSY', title: 'crypto busy', category: 'Crypto', tags: 'Crypto', volume: 500 },
+    ]);
+    const row = db
+      .query('SELECT markets_json FROM event_index WHERE event_ticker = ?')
+      .get('MIXED') as { markets_json: string };
+    const markets = JSON.parse(row.markets_json);
+    markets.push({ ...markets[0], ticker: 'MIXED-T2', result: 'yes', volume: 999999 });
+    db.query('UPDATE event_index SET markets_json = ? WHERE event_ticker = ?').run(
+      JSON.stringify(markets),
+      'MIXED',
+    );
+
+    const got = searchEventIndex(db, '', 30, { categoryLabels: ['Crypto'] });
+    expect(got.map((e) => e.event_ticker)).toEqual(['BUSY', 'MIXED']);
   });
 });
