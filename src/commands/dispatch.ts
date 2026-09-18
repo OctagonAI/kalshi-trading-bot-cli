@@ -32,7 +32,7 @@ import { handlePeers, formatPeersHuman } from './peers.js';
 import { handleCorrelate, formatCorrelationHuman } from './correlate.js';
 import { handleBasket, formatBasketHuman } from './basket.js';
 import { getMarketsWithEdge, searchOctagonEvents, searchOctagonMarkets } from '../scan/octagon-kalshi-api.js';
-import { formatMarketSearchHuman, formatMarketsWithEdgeHuman, formatEventSearchHuman, formatEventMarketsHuman } from './search-remote.js';
+import { formatMarketSearchHuman, formatMarketsWithEdgeHuman, formatEventSearchHuman, formatEventMarketsHuman, formatIndexEventsHuman } from './search-remote.js';
 import { parseThemeQuery } from '../scan/theme-registry.js';
 import { handleEvents, formatEventsHuman } from './events.js';
 import { handleTrust, formatTrustHuman } from './trust.js';
@@ -293,6 +293,26 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         // case-sensitive and a wrong case returns zero rows, not an error.
         // `theme:subtheme` ANDs the subtheme in as free text.
         const { theme, subtheme } = parseThemeQuery(query);
+        // The events route rejects any q term under three characters, and hyphens
+        // become spaces before it is sent — so check each term the way the request
+        // will, and say so plainly rather than leaking a raw upstream 400.
+        if (!usesMarketFilters && theme && subtheme) {
+          const tooShort = subtheme
+            .replace(/-/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean)
+            .find((t) => t.length < 3);
+          if (tooShort) {
+            const msg = `A subtheme must be at least 3 characters ('${tooShort}' is too short). Try: search ${theme.id}`;
+            if (json) {
+              console.log(JSON.stringify(wrapError('search', 'INVALID_ARGS', msg)));
+            } else {
+              console.error(msg);
+            }
+            process.exit(ExitCode.USER_ERROR);
+            return;
+          }
+        }
         if (!usesMarketFilters && theme) {
           const eventsPage = await searchOctagonEvents({
             meta_category: theme.metaCategory,
@@ -363,20 +383,23 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         await ensureIndex();
       }
       const db = (await import('../db/index.js')).getDb();
-      const results = searchEventIndex(db, query, 30);
+      // Mirror the TUI: a theme narrows by category, and `theme:subtheme` searches
+      // the subtheme within it. Passing the raw string made `crypto:btc` a single
+      // keyword that matched nothing, since search_text never contains a colon.
+      // kalshiCategories, not tags — that is what browse.ts maps a theme to.
+      const { theme: localTheme, subtheme: localSubtheme } = parseThemeQuery(query);
+      const results = localTheme
+        ? searchEventIndex(db, localSubtheme ?? '', 30, { categoryLabels: localTheme.kalshiCategories })
+        : searchEventIndex(db, query, 30);
+      const localDescribe = localTheme
+        ? localSubtheme
+          ? `theme ${localTheme.id}:${localSubtheme}`
+          : `theme ${localTheme.id}`
+        : `"${query}"`;
       if (json) {
         console.log(JSON.stringify(wrapSuccess('search', { events: results })));
       } else {
-        if (results.length === 0) {
-          console.log(`No events found for "${query}".`);
-        } else {
-          console.log(`Found ${results.length} event(s) for "${query}":\n`);
-          for (const ev of results) {
-            const markets = ev.markets_json ? JSON.parse(ev.markets_json) : [];
-            const openMarkets = markets.filter((m: any) => m.status === 'open' || m.status === 'active');
-            console.log(`  ${ev.event_ticker}  ${ev.title}  (${openMarkets.length} market${openMarkets.length !== 1 ? 's' : ''})`);
-          }
-        }
+        console.log(formatIndexEventsHuman(localDescribe, results));
       }
       return;
     }

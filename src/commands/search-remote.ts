@@ -164,6 +164,50 @@ export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiM
   return lines.join('\n');
 }
 
+/**
+ * Events read from the local index, used when there is no Octagon key.
+ *
+ * Deliberately the same table shape as formatEventSearchHuman so both paths read
+ * alike. The columns differ only where the index cannot supply the same data: it
+ * has no per-event last price, but it does know how many markets are still open.
+ * The header names the source, because the local index is a different (smaller,
+ * possibly staler) universe than the API.
+ */
+export function formatIndexEventsHuman(
+  describe: string,
+  events: Array<{ event_ticker: string; title: string; category: string | null; markets_json: string | null }>,
+): string {
+  const lines: string[] = [];
+  lines.push(`Events matching ${describe} — ${events.length} shown (local index)`);
+  lines.push('');
+
+  if (events.length === 0) {
+    lines.push(`No events found for ${describe}.`);
+    return lines.join('\n');
+  }
+
+  const rows: string[][] = events.map((ev) => {
+    let markets: Array<Record<string, unknown>> = [];
+    try {
+      const parsed: unknown = ev.markets_json ? JSON.parse(ev.markets_json) : [];
+      if (Array.isArray(parsed)) markets = parsed as Array<Record<string, unknown>>;
+    } catch {
+      // A malformed row should cost its market count, not the whole table.
+    }
+    const open = markets.filter((m) => m.status === 'open' || m.status === 'active');
+    const volume = open.reduce((sum, m) => sum + (Number(m.volume_24h) || 0), 0);
+    return [
+      ev.event_ticker,
+      truncate(ev.title ?? '-', 44),
+      String(open.length),
+      fmtVol(volume),
+      ev.category ?? '-',
+    ];
+  });
+  lines.push(formatTable(['Event', 'Title', 'Mkts', '24h Vol', 'Category'], rows));
+  return lines.join('\n');
+}
+
 export function formatMarketsWithEdgeHuman(data: MarketsWithEdgeResponse, minEdgePp: number): string {
   const lines: string[] = [];
   // Guard against invalid date strings — new Date('garbage').toISOString() throws RangeError.

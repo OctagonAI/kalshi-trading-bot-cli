@@ -16,6 +16,8 @@ export interface IndexedEvent {
 /**
  * Search the local event index using keyword matching.
  * All keywords must match against title, event_ticker, series_ticker, or category.
+ * Pass `categoryLabels` to AND a category constraint on top, which is how a
+ * theme (or `theme:subtheme`) narrows results; labels alone are a valid query.
  * Returns up to `limit` results.
  *
  * By default, only events with at least one active (open/active status, not past
@@ -26,24 +28,42 @@ export function searchEventIndex(
   db: Database,
   query: string,
   limit = 50,
-  options: { includeExpired?: boolean } = {},
+  options: { includeExpired?: boolean; categoryLabels?: string[] } = {},
 ): IndexedEvent[] {
-  const { includeExpired = false } = options;
+  const { includeExpired = false, categoryLabels } = options;
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
     .filter((k) => k.length > 0);
 
-  if (keywords.length === 0) return [];
+  const labels = (categoryLabels ?? []).filter((l) => l.length > 0);
+
+  // A bare theme supplies labels and no keyword, so either half alone is a
+  // valid query; only having neither is meaningless.
+  if (keywords.length === 0 && labels.length === 0) return [];
 
   // Build WHERE clause: each keyword must match somewhere in the searchable fields
   const conditions = keywords.map((_, i) => `(search_text LIKE $kw${i})`);
+
+  // A label matches the whole category or a whole comma-wrapped tag, so
+  // "Tech" cannot hit "Tech Stocks". Same predicate the TUI's browse query
+  // uses, which is what lets `theme:subtheme` behave identically on both.
+  if (labels.length > 0) {
+    const catConds = labels.map(
+      (_, i) => `(category = $cat${i} OR ',' || COALESCE(tags,'') || ',' LIKE $tag${i})`,
+    );
+    conditions.push(`(${catConds.join(' OR ')})`);
+  }
   const whereClause = conditions.join(' AND ');
 
   const now = new Date().toISOString();
   const params: Record<string, string | number> = { $limit: limit, $now: now };
   keywords.forEach((kw, i) => {
     params[`$kw${i}`] = `%${kw}%`;
+  });
+  labels.forEach((label, i) => {
+    params[`$cat${i}`] = label;
+    params[`$tag${i}`] = `%,${label},%`;
   });
 
   // Require at least one active market unless caller opts in to expired events.
