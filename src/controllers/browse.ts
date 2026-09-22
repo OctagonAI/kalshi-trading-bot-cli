@@ -560,12 +560,14 @@ export class BrowseController {
         kalshiEvents = await this.searchIndex(db, searchTerm, categoryLabels);
       }
 
-      // Sort all events by total market volume (most active first)
-      kalshiEvents.sort((a, b) => {
-        const volA = (a.markets ?? []).reduce((sum: number, m: any) => sum + (parseFloat(m.volume) || parseFloat(m.volume_fp) || 0), 0);
-        const volB = (b.markets ?? []).reduce((sum: number, m: any) => sum + (parseFloat(m.volume) || parseFloat(m.volume_fp) || 0), 0);
-        return volB - volA;
-      });
+      // Sort all events by tradeable market volume (most active first). Only
+      // count markets kalshiEventsToRows will keep, or a settled high-volume
+      // market could push a live event past the cap.
+      const tradeableVolume = (ev: KalshiEvent) =>
+        (ev.markets ?? [])
+          .filter((m) => isMarketActive(m))
+          .reduce((sum: number, m: any) => sum + (parseFloat(m.volume) || parseFloat(m.volume_fp) || 0), 0);
+      kalshiEvents.sort((a, b) => tradeableVolume(b) - tradeableVolume(a));
 
       // Discard stale response if a newer browse was started
       if (token !== undefined && token !== this.loadToken) return;
