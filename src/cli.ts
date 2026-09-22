@@ -355,7 +355,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   const helpTopicCompletions = (typed: string): AutocompleteItem[] | null => {
     const topics = [
       { value: 'search', label: 'search', description: 'Discovery commands' },
-      { value: 'similar', label: 'similar', description: 'Semantic market search (Octagon)' },
+      { value: 'similar', label: 'similar', description: 'Related markets (taxonomy walk / keyword relevance)' },
       { value: 'clusters', label: 'clusters', description: 'Browse thematic & behavioral clusters' },
       { value: 'peers', label: 'peers', description: 'Cluster peers for a ticker' },
       { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
@@ -408,7 +408,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       return opts.filter(o => o.value.toLowerCase().includes(lower));
     }},
     // Octagon Kalshi search/clusters/basket
-    { name: 'similar', description: 'Semantic market search by ticker or query', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+    { name: 'similar', description: 'Related markets by ticker (taxonomy walk) or query (keyword relevance)', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
       const opts = [
         { value: '<ticker>', label: '<ticker>', description: 'Anchor by ticker (no embedding call)' },
         { value: '-q "query text"', label: '-q "query text"', description: 'Anchor by free-text (server-side embed)' },
@@ -775,6 +775,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   let cachedBrowseSelector: Container | null = null;
   let cachedBrowseTheme = '';
   let cachedBrowseEventCount = 0;
+  let cachedBrowseStatus = '';
 
   const renderSelectionOverlay = () => {
     // Setup wizard overlay
@@ -868,9 +869,14 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     }
 
     if (browseState.appState === 'event_list') {
-      // If the cached selector still matches, update labels in-place (no flicker)
+      // If the cached selector still matches, update labels in-place (no flicker).
+      // The in-place update only refreshes labels, but the selector also renders
+      // the error and progress lines, and either can change while the theme and
+      // event count stay put, so they are part of the key.
+      const browseStatus = `${browseState.lastError ?? ''}\u0000${browseState.progressMessage ?? ''}`;
       if (cachedBrowseSelector && cachedBrowseTheme === browseState.theme
-          && cachedBrowseEventCount === browseState.events.length) {
+          && cachedBrowseEventCount === browseState.events.length
+          && cachedBrowseStatus === browseStatus) {
         updateBrowseMarketSelector(cachedBrowseSelector, browseState.events);
         tui.requestRender();
         return;
@@ -885,6 +891,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       cachedBrowseSelector = selector;
       cachedBrowseTheme = browseState.theme;
       cachedBrowseEventCount = browseState.events.length;
+      cachedBrowseStatus = browseStatus;
       const focusTarget = (selector as any)._browseList;
       renderScreenView(
         `Browse: ${browseState.theme}`,

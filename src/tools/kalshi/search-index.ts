@@ -66,7 +66,8 @@ async function fetchSeriesTags(seriesTickers: string[], totalEvents: number): Pr
       }),
     );
     for (const result of results) {
-      if (result.status === 'fulfilled' && result.value.tags.length > 0) {
+      // Keep empty lists too: they clear tags a series no longer carries.
+      if (result.status === 'fulfilled') {
         tagsMap.set(result.value.ticker, result.value.tags);
       }
     }

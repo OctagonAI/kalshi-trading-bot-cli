@@ -18,7 +18,6 @@ function json(status: number, body: unknown): Response {
 
 beforeEach(() => {
   calls = [];
-  process.env.OCTAGON_API_KEY = 'test-key';
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? 'GET' });

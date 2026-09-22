@@ -130,12 +130,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe('handleTrust', () => {
   let originalFetch: typeof globalThis.fetch;
   beforeEach(() => {
-    process.env.OCTAGON_API_KEY = 'sk_test';
     originalFetch = globalThis.fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.OCTAGON_API_KEY;
   });
 
   test('missing event ticker → error', async () => {

@@ -47,13 +47,16 @@ export function searchEventIndex(
   });
 
   // Require at least one active market unless caller opts in to expired events.
+  // One SQL definition of tradeable, used by both the filter and the ranking
+  // below so the two cannot drift. Mirrors isActiveMarketRecord: a market that
+  // settled while still flagged active is not tradeable, however recent it is.
+  const tradeableMarket = `json_extract(value, '$.status') IN ('open','active')
+          AND COALESCE(json_extract(value, '$.result'), '') = ''
+          AND (json_extract(value, '$.close_time') IS NULL OR json_extract(value, '$.close_time') > $now)`;
+
   const activeMarketsClause = includeExpired
     ? ''
-    : `AND EXISTS (
-        SELECT 1 FROM json_each(markets_json)
-        WHERE json_extract(value, '$.status') IN ('open','active')
-          AND (json_extract(value, '$.close_time') IS NULL OR json_extract(value, '$.close_time') > $now)
-      )`;
+    : `AND EXISTS (SELECT 1 FROM json_each(markets_json) WHERE ${tradeableMarket})`;
 
   // Use a CTE to compute search_text, filter expired markets, and rank by open-market volume descending
   const fullSql = `
@@ -72,8 +75,7 @@ export function searchEventIndex(
     FROM matched
     ORDER BY (
       SELECT coalesce(sum(
-        CASE WHEN json_extract(value, '$.status') IN ('open','active')
-              AND (json_extract(value, '$.close_time') IS NULL OR json_extract(value, '$.close_time') > $now)
+        CASE WHEN ${tradeableMarket}
              THEN json_extract(value, '$.volume')
              ELSE 0
         END
@@ -100,6 +102,10 @@ export function searchEventIndex(
 function isActiveMarketRecord(record: Record<string, unknown>, nowIso: string): boolean {
   const status = record.status;
   if (status !== 'open' && status !== 'active') return false;
+  // A market can settle while still flagged active, so status alone does not
+  // mean tradeable.
+  const result = record.result;
+  if (typeof result === 'string' && result !== '') return false;
   const closeTime = record.close_time;
   if (closeTime != null && typeof closeTime === 'string' && closeTime <= nowIso) return false;
   return true;

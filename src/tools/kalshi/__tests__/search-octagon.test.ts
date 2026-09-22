@@ -243,17 +243,13 @@ describe('extractEventsFromResults', () => {
 
 describe('octagonReportTool direct invocation', () => {
   test('returns result (not throws) when OCTAGON_API_KEY is missing', async () => {
-    const originalKey = process.env.OCTAGON_API_KEY;
-    delete process.env.OCTAGON_API_KEY;
+    // The test-setup preload restores the placeholder after this test.
+    process.env.OCTAGON_API_KEY = '';
 
-    try {
-      const result = await octagonReportTool.invoke({ ticker: 'KXTESLA-26-Q1-340000' });
-      expect(result).toBeTruthy();
-      const parsed = JSON.parse(result as string);
-      expect(parsed.data.error).toContain('OCTAGON_API_KEY not set');
-    } finally {
-      if (originalKey) process.env.OCTAGON_API_KEY = originalKey;
-    }
+    const result = await octagonReportTool.invoke({ ticker: 'KXTESLA-26-Q1-340000' });
+    expect(result).toBeTruthy();
+    const parsed = JSON.parse(result as string);
+    expect(parsed.data.error).toContain('OCTAGON_API_KEY not set');
   });
 });
 

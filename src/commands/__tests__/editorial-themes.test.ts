@@ -141,12 +141,10 @@ describe('Events command', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
-    process.env.OCTAGON_API_KEY = 'sk_test';
     originalFetch = globalThis.fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.OCTAGON_API_KEY;
   });
 
   test('events list paginates and sorts', async () => {

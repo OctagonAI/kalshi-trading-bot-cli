@@ -579,7 +579,8 @@ Discovery:
   series <SERIES>               Sub-markets in one series
   series candles <SERIES>       Series NAV (basket of top sub-markets)
   catalysts upcoming --days 30  Markets closing soon, grouped by week
-  trust <event_ticker>          Trader Trust scorecard (table across markets)
+  trust <event_ticker>          Octagon Trust Index (overall score + profile)
+  trust <event> --verbose       ...plus per-contract market quality
   trust <event> --market <mkt>  Single-market trust detail card
   report <event_ticker>         Full Octagon markdown report (use --refresh for fresh pull)
   watch <ticker>                Live price/orderbook feed
@@ -667,7 +668,8 @@ Discovery:
   /series <SERIES>               Sub-markets in one series
   /series candles <SERIES>       Series NAV (basket of top sub-markets)
   /catalysts upcoming --days 30  Markets closing soon, grouped by week
-  /trust <event_ticker>          Trader Trust scorecard (table across markets)
+  /trust <event_ticker>          Octagon Trust Index (overall score + profile)
+  /trust <event> --verbose       ...plus per-contract market quality
   /trust <event> --market <mkt>  Single-market trust detail card
   /report <event_ticker>         Full Octagon markdown report (use --refresh for fresh pull)
   /watch <ticker>                Live price/orderbook feed
