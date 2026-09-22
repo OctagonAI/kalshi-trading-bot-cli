@@ -414,9 +414,9 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     // Octagon Kalshi search/clusters/basket
     { name: 'similar', description: 'Related markets by ticker (taxonomy walk) or query (keyword relevance)', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
       const opts = [
-        { value: '<ticker>', label: '<ticker>', description: 'Anchor by ticker (no embedding call)' },
-        { value: '-q "query text"', label: '-q "query text"', description: 'Anchor by free-text (server-side embed)' },
-        { value: '--top-k 25', label: '--top-k 25', description: 'Number of neighbors (default 25)' },
+        { value: '<ticker>', label: '<ticker>', description: 'Related markets by taxonomy walk' },
+        { value: '-q "query text"', label: '-q "query text"', description: 'Markets ranked by keyword relevance' },
+        { value: '--top-k 25', label: '--top-k 25', description: 'Number of results (default 25)' },
         { value: '--category crypto', label: '--category crypto', description: 'Filter by category' },
         { value: '--min-volume 10000', label: '--min-volume 10000', description: '24h volume floor' },
       ];

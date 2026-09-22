@@ -193,7 +193,10 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
       await new Promise((r) => setTimeout(r, delay));
     }
 
+    // The deadline stays armed through the body read, so read the body inside
+    // this try too: an abort there is the same timeout, not a raw AbortError.
     let resp: Response;
+    let body: string;
     try {
       resp = await fetchWithDeadline(`${baseUrl}/responses`, {
         method: 'POST',
@@ -203,6 +206,7 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
         },
         body: reqBody,
       }, timeoutMs);
+      body = await resp.text();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         const secs = Math.round(timeoutMs / 1000);
@@ -214,13 +218,12 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
     }
 
     if (resp.ok) {
-      const data = await resp.json();
+      const data = JSON.parse(body);
       return extractTextFromResponse(data);
     }
 
     // Retry on 502/503/504 gateway errors
     if ([502, 503, 504].includes(resp.status) && attempt < MAX_RETRIES) {
-      const body = await resp.text().catch(() => '');
       const isHtml = body.trimStart().startsWith('<');
       const detail = isHtml ? '' : body.slice(0, 200);
       lastError = new Error(`${resp.status} ${resp.statusText}${detail ? ` — ${detail}` : ''}`);
@@ -228,7 +231,6 @@ export async function callOctagon(input: string, variant: OctagonVariant): Promi
     }
 
     // Non-retryable error or retries exhausted
-    const body = await resp.text().catch(() => '');
     const isHtml = body.trimStart().startsWith('<');
     const detail = isHtml ? '' : body.slice(0, 200);
     const maskedKey = apiKey!.length > 4 ? '...' + apiKey!.slice(-4) : '****';

@@ -227,3 +227,44 @@ d4('recovery hardening', () => {
     e4(res.markdown).toBe('# ok');
   }, 15_000);
 });
+
+// ─── Deadline during the body read ──────────────────────────────────────────
+// fetchWithDeadline keeps its deadline armed until the body is read, so it can
+// fire after the headers arrive. That abort must be the same "timed out" error
+// as one during the request: GETs retry on it, and a generate POST that may
+// already have started a run must enter recovery rather than fail outright.
+function abortedBody(status: number): Response {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new DOMException('The operation was aborted.', 'AbortError'));
+    },
+  });
+  return new Response(stream, { status });
+}
+
+d4('deadline during the body read', () => {
+  t4('a GET whose body read times out is retried', async () => {
+    let n = 0;
+    responder = () => (++n === 1
+      ? abortedBody(200)
+      : json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [], markdown_report: null, run_id: null }));
+    const res = await fetchReportVersions('KXTEST-26');
+    e4(res.versions).toEqual([]);
+    e4(n).toBe(2);
+  }, 15_000);
+
+  t4('a generate POST whose body read times out enters recovery', async () => {
+    let latestCalls = 0;
+    responder = (url, init) => {
+      if (init?.method === 'POST') return abortedBody(202);
+      if (url.includes('version=latest')) {
+        latestCalls++;
+        return json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [{ run_id: 'new-run' }], markdown_report: '# Recovered', run_id: 'new-run' });
+      }
+      return json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [{ run_id: 'old-run' }], markdown_report: null, run_id: null });
+    };
+    const res = await generateReportAndWait('KXTEST-26', { pollIntervalMs: 5, timeoutMs: 5_000 });
+    e4(res.markdown).toBe('# Recovered');
+    e4(latestCalls).toBeGreaterThan(0);
+  });
+});
