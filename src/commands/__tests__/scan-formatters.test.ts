@@ -64,4 +64,11 @@ describe('formatTable', () => {
     expect(out).toContain('\x1b[32m');
     expect(stripVTControlCharacters(out).split('\n').every((l) => l.length <= 30)).toBe(true);
   });
+
+  test('a six-column table fits a 40-column terminal', () => {
+    const heads = ['Ticker', 'Title', 'Model', 'Market', 'Edge', 'Volume'];
+    const rows = [['KXBTC-26DEC31-B100000', 'Will Bitcoin close above $100k?', '62.0%', '55.0%', '+7.0', '1,234,567']];
+    const out = formatTable(heads, rows, 40);
+    expect(out.split('\n').every((l) => l.length <= 40)).toBe(true);
+  });
 });

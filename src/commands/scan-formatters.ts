@@ -69,7 +69,9 @@ export function formatTable(headers: string[], rows: string[][], maxWidth?: numb
   // 99 content + (3 × 6 + 1) = 118 columns.
   const chrome = colWidths.length * 3 + 1;
   const budget = maxWidth ?? terminalBudget();
-  const MIN_COL = 8;
+  // Prefer 8, but let a narrow terminal squeeze wide tables further; a fixed
+  // floor meant six columns could never fit under 67.
+  const MIN_COL = Math.max(3, Math.min(8, Math.floor((budget - chrome) / colWidths.length)));
   let total = colWidths.reduce((a, b) => a + b, 0) + chrome;
   while (total > budget) {
     let widest = 0;
