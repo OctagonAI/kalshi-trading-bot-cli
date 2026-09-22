@@ -1,4 +1,4 @@
-import { callKalshiApi, supportsFractional } from "../tools/kalshi/api.js";
+import { callKalshiApi, fetchAllPages, supportsFractional } from "../tools/kalshi/api.js";
 import type {
   KalshiBalance,
   KalshiMarket,
@@ -45,10 +45,18 @@ export async function fetchLiveBankroll(): Promise<LiveBankroll> {
   const balanceRes = await callKalshiApi("GET", "/portfolio/balance");
   const balance = balanceRes as unknown as KalshiBalance;
 
-  const positionsRes = await callKalshiApi("GET", "/portfolio/positions");
-  const positions = (positionsRes.market_positions ??
-    positionsRes.positions ??
-    []) as KalshiPosition[];
+  // Paginated: /portfolio/positions takes cursor + limit (max 1000) and returns
+  // a cursor for the next page. A single un-cursored call understates
+  // openExposure for any account past the first page — and that number feeds
+  // Kelly sizing and the risk gate, so positions would be sized against a
+  // bankroll that looks freer than it is. fetchAllPages warns if it hits the
+  // page cap with more pages outstanding.
+  const positions = await fetchAllPages<KalshiPosition>(
+    "/portfolio/positions",
+    { limit: 1000 },
+    "market_positions",
+    20,
+  );
 
   const cashBalance = balance.balance;
   const portfolioValue = balance.portfolio_value;

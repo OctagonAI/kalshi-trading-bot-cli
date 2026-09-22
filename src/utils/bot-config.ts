@@ -178,10 +178,22 @@ export function setBotSetting(dotKey: string, rawValue: string): { oldValue: unk
     newValue = rawValue;
   }
 
-  const config = loadBotConfig();
-  const oldValue = walkGet(config as unknown as Record<string, unknown>, keys);
-  walkSet(config as unknown as Record<string, unknown>, keys, newValue);
-  saveBotConfig(config);
+  const current = loadBotConfig();
+  const oldValue = walkGet(current as unknown as Record<string, unknown>, keys);
+
+  // Mutate a clone, not the cached object: loadBotConfig() hands back
+  // _cachedConfig by reference, so writing through it would leave the new value
+  // live in memory even when the disk write fails below — and a later
+  // successful save from elsewhere would then persist it.
+  const next = structuredClone(current);
+  walkSet(next as unknown as Record<string, unknown>, keys, newValue);
+
+  // saveBotConfig swallows write errors and returns false; dropping that makes
+  // a failed write indistinguishable from success. It adopts `next` as the new
+  // cache only on success, so a failure leaves the old value in place.
+  if (!saveBotConfig(next)) {
+    throw new Error(`Failed to write config to disk — ${dotKey} was not saved.`);
+  }
 
   return { oldValue, newValue };
 }

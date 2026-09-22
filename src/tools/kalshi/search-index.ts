@@ -1,5 +1,5 @@
 import { getDb } from '../../db/index.js';
-import { clearAndPopulateIndex, getIndexAge, setLastRefresh } from '../../db/event-index.js';
+import { clearAndPopulateIndex, countIndexRows, getIndexAge, setLastRefresh } from '../../db/event-index.js';
 import { callKalshiApi, fetchAllPages } from './api.js';
 import { logger } from '../../utils/logger.js';
 import type { KalshiEvent, KalshiSeries } from './types.js';
@@ -66,7 +66,8 @@ async function fetchSeriesTags(seriesTickers: string[], totalEvents: number): Pr
       }),
     );
     for (const result of results) {
-      if (result.status === 'fulfilled' && result.value.tags.length > 0) {
+      // Keep empty lists too: they clear tags a series no longer carries.
+      if (result.status === 'fulfilled') {
         tagsMap.set(result.value.ticker, result.value.tags);
       }
     }
@@ -181,8 +182,10 @@ export async function ensureIndex(): Promise<void> {
   const db = getDb();
   const age = getIndexAge(db);
 
-  // Fresh index — nothing to do
-  if (age < INDEX_STALE_MS) return;
+  // Fresh index that actually has rows — nothing to do. The row count is the
+  // real emptiness test: a 0-row index can carry a fresh timestamp, which
+  // would leave every search returning nothing for the full stale window.
+  if (age < INDEX_STALE_MS && countIndexRows(db) > 0) return;
 
   // Stale or first-run: trigger background refresh if not already running
   if (!_refreshPromise) {

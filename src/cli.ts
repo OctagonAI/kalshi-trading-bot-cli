@@ -355,13 +355,13 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   const helpTopicCompletions = (typed: string): AutocompleteItem[] | null => {
     const topics = [
       { value: 'search', label: 'search', description: 'Discovery commands' },
-      { value: 'similar', label: 'similar', description: 'Semantic market search (Octagon)' },
+      { value: 'similar', label: 'similar', description: 'Related markets (taxonomy walk / keyword relevance)' },
       { value: 'clusters', label: 'clusters', description: 'Browse thematic & behavioral clusters' },
       { value: 'peers', label: 'peers', description: 'Cluster peers for a ticker' },
       { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
       { value: 'basket', label: 'basket', description: 'Build / backtest / size baskets' },
       { value: 'events', label: 'events', description: 'Octagon events (event ↔ outcome ladder)' },
-      { value: 'trust', label: 'trust', description: 'Trader Trust scorecard (per-market integrity scores)' },
+      { value: 'trust', label: 'trust', description: 'Octagon Trust Index for an event' },
       { value: 'report', label: 'report', description: 'Full Octagon markdown report for an event' },
       { value: 'series', label: 'series', description: 'Series rollup / NAV' },
       { value: 'catalysts', label: 'catalysts', description: 'Upcoming market closes by week' },
@@ -408,11 +408,11 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       return opts.filter(o => o.value.toLowerCase().includes(lower));
     }},
     // Octagon Kalshi search/clusters/basket
-    { name: 'similar', description: 'Semantic market search by ticker or query', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+    { name: 'similar', description: 'Related markets by ticker (taxonomy walk) or query (keyword relevance)', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
       const opts = [
-        { value: '<ticker>', label: '<ticker>', description: 'Anchor by ticker (no embedding call)' },
-        { value: '-q "query text"', label: '-q "query text"', description: 'Anchor by free-text (server-side embed)' },
-        { value: '--top-k 25', label: '--top-k 25', description: 'Number of neighbors (default 25)' },
+        { value: '<ticker>', label: '<ticker>', description: 'Related markets by taxonomy walk' },
+        { value: '-q "query text"', label: '-q "query text"', description: 'Markets ranked by keyword relevance' },
+        { value: '--top-k 25', label: '--top-k 25', description: 'Number of results (default 25)' },
         { value: '--category crypto', label: '--category crypto', description: 'Filter by category' },
         { value: '--min-volume 10000', label: '--min-volume 10000', description: '24h volume floor' },
       ];
@@ -433,7 +433,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     { name: 'peers', description: 'Find markets in the same cluster as a ticker', getArgumentCompletions: usageHint('<ticker> [--behavioral] [--limit N] [--show-cluster]', 'e.g. KXBTCD-26DEC31-T100000 --limit 20') },
     { name: 'correlate', description: 'Pairwise correlation matrix (2-100 tickers)', getArgumentCompletions: usageHint('<ticker1> <ticker2> [...] [--window-days N]', 'e.g. KXA KXB KXC --window-days 90') },
     { name: 'events', description: 'Octagon events — outcome ladder per event', getArgumentCompletions: usageHint('<event_ticker> | --category Politics | --min-volume 10000', 'e.g. KXFEDCHAIRNOM-29 to drill in') },
-    { name: 'trust', description: 'Trader Trust scorecard (per-market integrity scores)', getArgumentCompletions: usageHint('<event_ticker> [--market <market_ticker>] [--verbose]', 'e.g. KXMENWORLDCUP-26 --market KXMENWORLDCUP-26-FR') },
+    { name: 'trust', description: 'Octagon Trust Index for an event', getArgumentCompletions: usageHint('<event_ticker> [--market <market_ticker>] [--verbose]', 'e.g. KXMENWORLDCUP-26 --market KXMENWORLDCUP-26-FR') },
     { name: 'variants', description: 'Strategy-variant leaderboard: backtest signals segmented by named filters', getArgumentCompletions: usageHint('[--days N] [--min-edge N] [--min-volume N] [--resolved]', 'e.g. /variants --days 7 --resolved') },
     { name: 'paper', description: 'Paper-trading ledger: forward-test without exchange orders', getArgumentCompletions: usageHint('buy|sell <ticker> <count> [price] [yes|no] — or bare for the ledger view', 'e.g. /paper buy KXFED-26SEP-T3 10 40 yes') },
     { name: 'mandate', description: 'Show hard trading caps + kill-switch status' },
@@ -775,6 +775,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   let cachedBrowseSelector: Container | null = null;
   let cachedBrowseTheme = '';
   let cachedBrowseEventCount = 0;
+  let cachedBrowseStatus = '';
 
   const renderSelectionOverlay = () => {
     // Setup wizard overlay
@@ -868,9 +869,14 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     }
 
     if (browseState.appState === 'event_list') {
-      // If the cached selector still matches, update labels in-place (no flicker)
+      // If the cached selector still matches, update labels in-place (no flicker).
+      // The in-place update only refreshes labels, but the selector also renders
+      // the error and progress lines, and either can change while the theme and
+      // event count stay put, so they are part of the key.
+      const browseStatus = `${browseState.lastError ?? ''}\u0000${browseState.progressMessage ?? ''}`;
       if (cachedBrowseSelector && cachedBrowseTheme === browseState.theme
-          && cachedBrowseEventCount === browseState.events.length) {
+          && cachedBrowseEventCount === browseState.events.length
+          && cachedBrowseStatus === browseStatus) {
         updateBrowseMarketSelector(cachedBrowseSelector, browseState.events);
         tui.requestRender();
         return;
@@ -885,6 +891,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       cachedBrowseSelector = selector;
       cachedBrowseTheme = browseState.theme;
       cachedBrowseEventCount = browseState.events.length;
+      cachedBrowseStatus = browseStatus;
       const focusTarget = (selector as any)._browseList;
       renderScreenView(
         `Browse: ${browseState.theme}`,

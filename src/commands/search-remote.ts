@@ -24,6 +24,9 @@ function fmtVol(v: number | null | undefined): string {
 
 function fmtCloseDate(iso: string | null): string {
   if (!iso) return '-';
+  if (Number.isNaN(new Date(iso).getTime())) return '-';
+  // Slice the original string rather than re-serialising: toISOString() shifts
+  // the displayed day for any offset-bearing timestamp.
   return iso.slice(0, 10);
 }
 

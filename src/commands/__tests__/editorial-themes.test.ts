@@ -141,18 +141,16 @@ describe('Events command', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
-    process.env.OCTAGON_API_KEY = 'sk_test';
     originalFetch = globalThis.fetch;
   });
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.OCTAGON_API_KEY;
   });
 
   test('events list paginates and sorts', async () => {
     globalThis.fetch = mock(async (url: string | URL | Request) => {
       const s = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
-      expect(s).toContain('/prediction-markets/events');
+      expect(s).toContain('/predictions/events');
       return new Response(JSON.stringify({
         data: [
           { event_ticker: 'KXA', name: 'A', series_category: 'Crypto', model_probability: 50, market_probability: 45, edge_pp: 5, confidence_score: 8, total_volume: 100, total_open_interest: 50, expected_return: 0.05, close_time: '2026-12-31T00:00:00Z', key_takeaway: '', captured_at: '', history_id: 1, run_id: 'r', slug: 'a', available_on_brokers: true, mutually_exclusive: false, analysis_last_updated: '', r_score: 0 },

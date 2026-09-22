@@ -1,0 +1,1190 @@
+{
+  "calculation_version": "trader_dashboard_lean_v1.14",
+  "formula_versions": {
+    "liquidity": "liquidity_v1.14",
+    "move_quality": "move_quality_v1.6",
+    "resolution_clarity": "resolution_clarity_v1.7",
+    "market_quality": "market_quality_v1.5",
+    "event_quality": "event_quality_v1.11"
+  },
+  "computed_at": "2026-09-11T16:57:33.033649+00:00",
+  "event_ticker": "KXNVDAA-28JANHEAD",
+  "event": {
+    "event_quality": {
+      "value": 58,
+      "label": "Weak",
+      "confidence": "high"
+    },
+    "quality_base": 58,
+    "structure": "ladder",
+    "coverage": 100,
+    "coverage_basis": "open_interest_notional",
+    "components": {
+      "event_liquidity": 55,
+      "event_liquidity_label": "Thin",
+      "event_move_quality": 47,
+      "event_move_quality_label": "Mixed",
+      "event_rule_clarity": 100,
+      "event_resolution": "Clear",
+      "event_coherence": "Coherent"
+    },
+    "coherence": {
+      "status": "Coherent",
+      "applicable": true,
+      "edge_sell_cents": 0.0,
+      "edge_sell_net_cents": 0.0,
+      "fees_cents": 0.0,
+      "sellable_legs": 0,
+      "edge_buy_est_cents": 0.0,
+      "tail_imputed": false,
+      "executable": false,
+      "confidence": "high",
+      "cap": null,
+      "detail": "ge ladder, max adjacent monotonicity edge 0.0c over 6 rungs",
+      "drivers": []
+    },
+    "child_distribution": {
+      "high": 1,
+      "medium": 4,
+      "low": 1,
+      "suppressed": 0
+    },
+    "caps_applied": [],
+    "drivers": [
+      "6/6 child markets have usable two-sided books",
+      "Rules are consistent across child outcomes"
+    ],
+    "worst_children": [
+      {
+        "market_ticker": "KXNVDAA-28JANHEAD-56000",
+        "title": "Above 56000",
+        "market_quality": 14,
+        "liquidity": 14
+      },
+      {
+        "market_ticker": "KXNVDAA-28JANHEAD-46000",
+        "title": "Above 46000",
+        "market_quality": 41,
+        "liquidity": 41
+      },
+      {
+        "market_ticker": "KXNVDAA-28JANHEAD-50000",
+        "title": "Above 50000",
+        "market_quality": 60,
+        "liquidity": 60
+      }
+    ],
+    "markets_scored": 6,
+    "total_children": 6
+  },
+  "markets": [
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-46000",
+      "title": "Above 46000",
+      "lifecycle_status": "active",
+      "fair_cents": 96.14,
+      "best_bid_cents": 89.0,
+      "best_ask_cents": 97.0,
+      "best_no_bid_cents": 3.0,
+      "best_bid_size": 200.0,
+      "best_ask_size": 23.98,
+      "spread_cents": 8.0,
+      "last_trade_cents": 88.0,
+      "threshold": 46000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 41,
+          "label": "Thin",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Scored from 24h activity alone \u2014 realized cost unmeasurable (capped at 65)",
+            "24h traded notional $7"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 96.14,
+          "cost_basis": "activity_only",
+          "can_fill_ref": false,
+          "realized_cost_pct": null,
+          "traded_notional_24h": 7.89,
+          "n_traded_bars": 0,
+          "cost_window_bars": 168,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": null,
+          "evidence": [
+            {
+              "text": "Scored from 24h activity alone \u2014 realized cost unmeasurable (capped at 65)"
+            },
+            {
+              "text": "24h traded notional $7",
+              "metric": "traded_notional_24h",
+              "value": 7.89,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": null,
+          "label": "No trading in 7d",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": true,
+          "drivers": [
+            "No trades in the last 7d \u2014 nothing to confirm"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "evidence": [
+            {
+              "text": "No trades in the last 7d \u2014 nothing to confirm"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 41,
+          "label": "Weak",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Scored from 24h activity alone \u2014 realized cost unmeasurable (capped at 65)"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Scored from 24h activity alone \u2014 realized cost unmeasurable (capped at 65)"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    },
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-48000",
+      "title": "Above 48000",
+      "lifecycle_status": "active",
+      "fair_cents": 77.24,
+      "best_bid_cents": 77.0,
+      "best_ask_cents": 82.0,
+      "best_no_bid_cents": 18.0,
+      "best_bid_size": 5.0,
+      "best_ask_size": 100.0,
+      "spread_cents": 5.0,
+      "last_trade_cents": 86.0,
+      "threshold": 48000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 77,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 1.8% of price over 3 traded bars",
+            "24h traded notional $262"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 77.24,
+          "cost_basis": "realized_cost",
+          "can_fill_ref": false,
+          "realized_cost_pct": 1.83,
+          "traded_notional_24h": 262.9,
+          "n_traded_bars": 3,
+          "cost_window_bars": 72,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": 1.8,
+          "evidence": [
+            {
+              "text": "Typical bar range 1.8% of price over 3 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 1.83,
+              "window": "3 traded bars of the last 72"
+            },
+            {
+              "text": "24h traded notional $262",
+              "metric": "traded_notional_24h",
+              "value": 262.9,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": 74,
+          "label": "Confirmed",
+          "confidence": "medium",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Volume is light/neutral for the move over 24h",
+            "100% of the move retained"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "move_log_odds": 0.299,
+          "flow_imbalance": 0.041,
+          "move_window_bars": 24,
+          "tag": null,
+          "evidence": [
+            {
+              "text": "Volume is light/neutral for the move over 24h",
+              "metric": "flow_agreement",
+              "value": 0.85,
+              "window": "24 bars"
+            },
+            {
+              "text": "100% of the move retained",
+              "metric": "move_retained_pct",
+              "value": 100,
+              "comparison": "against the window's peak excursion"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 77,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 1.8% of price over 3 traded bars"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Typical bar range 1.8% of price over 3 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 1.83,
+              "window": "3 traded bars of the last 72"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    },
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-50000",
+      "title": "Above 50000",
+      "lifecycle_status": "active",
+      "fair_cents": 66.19,
+      "best_bid_cents": 66.0,
+      "best_ask_cents": 74.0,
+      "best_no_bid_cents": 26.0,
+      "best_bid_size": 5.0,
+      "best_ask_size": 203.66,
+      "spread_cents": 8.0,
+      "last_trade_cents": 74.0,
+      "threshold": 50000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 60,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 2.6% of price over 5 traded bars",
+            "24h traded notional $4"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 66.19,
+          "cost_basis": "realized_cost",
+          "can_fill_ref": false,
+          "realized_cost_pct": 2.6,
+          "traded_notional_24h": 4.59,
+          "n_traded_bars": 5,
+          "cost_window_bars": 72,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": 2.6,
+          "evidence": [
+            {
+              "text": "Typical bar range 2.6% of price over 5 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 2.6,
+              "window": "5 traded bars of the last 72"
+            },
+            {
+              "text": "24h traded notional $4",
+              "metric": "traded_notional_24h",
+              "value": 4.59,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            },
+            {
+              "text": "Book spread 12% vs realized 3%"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": 33,
+          "label": "Unconfirmed",
+          "confidence": "medium",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Volume confirms the move over 3d",
+            "6% of the move retained"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "warning": "Unconfirmed move \u2014 light volume and/or it has partly reverted.",
+          "move_log_odds": -0.279,
+          "flow_imbalance": -0.435,
+          "move_window_bars": 72,
+          "tag": "Reverted move",
+          "evidence": [
+            {
+              "text": "Volume confirms the move over 3d",
+              "metric": "flow_agreement",
+              "value": 1.0,
+              "window": "72 bars"
+            },
+            {
+              "text": "6% of the move retained",
+              "metric": "move_retained_pct",
+              "value": 6,
+              "comparison": "against the window's peak excursion"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 60,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 2.6% of price over 5 traded bars"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Typical bar range 2.6% of price over 5 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 2.6,
+              "window": "5 traded bars of the last 72"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    },
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-52000",
+      "title": "Above 52000",
+      "lifecycle_status": "active",
+      "fair_cents": 38.93,
+      "best_bid_cents": 36.0,
+      "best_ask_cents": 39.0,
+      "best_no_bid_cents": 61.0,
+      "best_bid_size": 200.0,
+      "best_ask_size": 5.0,
+      "spread_cents": 3.0,
+      "last_trade_cents": 35.0,
+      "threshold": 52000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 65,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 2.9% of price over 5 traded bars",
+            "24h traded notional $16"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 38.93,
+          "cost_basis": "realized_cost",
+          "can_fill_ref": false,
+          "realized_cost_pct": 2.86,
+          "traded_notional_24h": 16.38,
+          "n_traded_bars": 5,
+          "cost_window_bars": 72,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": 2.9,
+          "evidence": [
+            {
+              "text": "Typical bar range 2.9% of price over 5 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 2.86,
+              "window": "5 traded bars of the last 72"
+            },
+            {
+              "text": "24h traded notional $16",
+              "metric": "traded_notional_24h",
+              "value": 16.38,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": 30,
+          "label": "Unconfirmed",
+          "confidence": "medium",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Volume confirms the move over 24h",
+            "23% of the move retained"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "warning": "Unconfirmed move \u2014 light volume and/or it has partly reverted.",
+          "move_log_odds": -0.779,
+          "flow_imbalance": -0.426,
+          "move_window_bars": 24,
+          "tag": "Reverted move",
+          "evidence": [
+            {
+              "text": "Volume confirms the move over 24h",
+              "metric": "flow_agreement",
+              "value": 1.0,
+              "window": "24 bars"
+            },
+            {
+              "text": "23% of the move retained",
+              "metric": "move_retained_pct",
+              "value": 23,
+              "comparison": "against the window's peak excursion"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 65,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 2.9% of price over 5 traded bars"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Typical bar range 2.9% of price over 5 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 2.86,
+              "window": "5 traded bars of the last 72"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    },
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-54000",
+      "title": "Above 54000",
+      "lifecycle_status": "active",
+      "fair_cents": 26.19,
+      "best_bid_cents": 26.0,
+      "best_ask_cents": 34.0,
+      "best_no_bid_cents": 66.0,
+      "best_bid_size": 5.0,
+      "best_ask_size": 205.0,
+      "spread_cents": 8.0,
+      "last_trade_cents": 4.0,
+      "threshold": 54000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 62,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 5.0% of price over 11 traded bars",
+            "24h traded notional $32"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 26.19,
+          "cost_basis": "realized_cost",
+          "can_fill_ref": false,
+          "realized_cost_pct": 5.02,
+          "traded_notional_24h": 32.92,
+          "n_traded_bars": 11,
+          "cost_window_bars": 168,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": 5.0,
+          "evidence": [
+            {
+              "text": "Typical bar range 5.0% of price over 11 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 5.02,
+              "window": "11 traded bars of the last 168"
+            },
+            {
+              "text": "24h traded notional $32",
+              "metric": "traded_notional_24h",
+              "value": 32.92,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            },
+            {
+              "text": "Book spread 31% vs realized 5%"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": 61,
+          "label": "Mostly confirmed",
+          "confidence": "medium",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Volume opposes the move over 24h",
+            "100% of the move retained"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "move_log_odds": -3.058,
+          "flow_imbalance": 0.44,
+          "move_window_bars": 24,
+          "tag": null,
+          "evidence": [
+            {
+              "text": "Volume opposes the move over 24h",
+              "metric": "flow_agreement",
+              "value": 0.5,
+              "window": "24 bars"
+            },
+            {
+              "text": "100% of the move retained",
+              "metric": "move_retained_pct",
+              "value": 100,
+              "comparison": "against the window's peak excursion"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 62,
+          "label": "Tradeable",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 5.0% of price over 11 traded bars"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Typical bar range 5.0% of price over 11 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 5.02,
+              "window": "11 traded bars of the last 168"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    },
+    {
+      "market_ticker": "KXNVDAA-28JANHEAD-56000",
+      "title": "Above 56000",
+      "lifecycle_status": "active",
+      "fair_cents": 16.19,
+      "best_bid_cents": 16.0,
+      "best_ask_cents": 24.0,
+      "best_no_bid_cents": 76.0,
+      "best_bid_size": 5.0,
+      "best_ask_size": 201.48,
+      "spread_cents": 8.0,
+      "last_trade_cents": 27.0,
+      "threshold": 56000.0,
+      "threshold_dir": "ge",
+      "scores": {
+        "liquidity": {
+          "value": 14,
+          "label": "Very thin",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 16.3% of price over 7 traded bars",
+            "24h traded notional $0"
+          ],
+          "calculation_version": "liquidity_v1.14",
+          "warning": "Light recent trading \u2014 size may not fill near the screen price.",
+          "fair_cents": 16.19,
+          "cost_basis": "realized_cost",
+          "can_fill_ref": false,
+          "realized_cost_pct": 16.27,
+          "traded_notional_24h": 0.57,
+          "n_traded_bars": 7,
+          "cost_window_bars": 168,
+          "cost_cohort_mode": "fixed",
+          "book_present": true,
+          "round_trip_pct": 16.3,
+          "evidence": [
+            {
+              "text": "Typical bar range 16.3% of price over 7 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 16.27,
+              "window": "7 traded bars of the last 168"
+            },
+            {
+              "text": "24h traded notional $0",
+              "metric": "traded_notional_24h",
+              "value": 0.57,
+              "window": "24h"
+            },
+            {
+              "text": "Light trading: under $2,000 in 24h"
+            }
+          ]
+        },
+        "move_quality": {
+          "value": 50,
+          "label": "Mixed",
+          "confidence": "medium",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Volume confirms the move over 3d",
+            "44% of the move retained"
+          ],
+          "calculation_version": "move_quality_v1.6",
+          "move_log_odds": 1.203,
+          "flow_imbalance": 0.14,
+          "move_window_bars": 72,
+          "tag": null,
+          "evidence": [
+            {
+              "text": "Volume confirms the move over 3d",
+              "metric": "flow_agreement",
+              "value": 1.0,
+              "window": "72 bars"
+            },
+            {
+              "text": "44% of the move retained",
+              "metric": "move_retained_pct",
+              "value": 44,
+              "comparison": "against the window's peak excursion"
+            }
+          ]
+        },
+        "resolution_clarity": {
+          "value": 100,
+          "label": "Clear",
+          "confidence": "high",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "All checks pass"
+          ],
+          "calculation_version": "resolution_clarity_v1.7",
+          "bucket": "Clear",
+          "cap": null,
+          "checks": {
+            "objective_outcome": "pass",
+            "official_source": "pass",
+            "time_boundary": "pass"
+          },
+          "evidence": [
+            {
+              "text": "All checks pass"
+            }
+          ]
+        },
+        "market_quality": {
+          "value": 14,
+          "label": "Very weak",
+          "confidence": "low",
+          "suppressed": false,
+          "not_applicable": false,
+          "drivers": [
+            "Typical bar range 16.3% of price over 7 traded bars"
+          ],
+          "calculation_version": "market_quality_v1.5",
+          "caps_applied": [],
+          "evidence": [
+            {
+              "text": "Typical bar range 16.3% of price over 7 traded bars",
+              "metric": "realized_cost_pct",
+              "value": 16.27,
+              "window": "7 traded bars of the last 168"
+            }
+          ]
+        }
+      },
+      "is_primary": false
+    }
+  ],
+  "liquidity_cohort": {
+    "mode": "fixed",
+    "cost_center_pct": 8.0,
+    "cost_scale_pct": 3.5,
+    "n_cost": 5
+  },
+  "venue": "kalshi",
+  "scope": {
+    "threshold": 100.0,
+    "total_markets": 6,
+    "scored_markets": 6,
+    "excluded": {
+      "no_ticker": 0,
+      "terminal_lifecycle": 0,
+      "below_volume_floor": 0
+    },
+    "excluded_total": 0,
+    "excluded_below_floor": 0,
+    "max_market_volume": 9394.03,
+    "scorable": true
+  },
+  "integrity": {
+    "calculation_version": "integrity_v1.2",
+    "formula_versions": {
+      "classifier": "series_rules_v1.1",
+      "information_exposure": "information_exposure_v1.0",
+      "outcome_control": "outcome_control_v1.0",
+      "move_leads_catalyst": "move_leads_catalyst_v1.0",
+      "longshot_repricing": "longshot_repricing_v1.0",
+      "pre_broadcast_convergence": "pre_broadcast_convergence_v1.0",
+      "thin_leg_conviction": "thin_leg_conviction_v1.0",
+      "cross_venue_lead_lag": "cross_venue_lead_lag_v1.0",
+      "trade_size_anomaly": "trade_size_anomaly_v1.2",
+      "thin_move_anomaly": "thin_move_anomaly_v1.1",
+      "trade_roundness": "trade_roundness_v1.1",
+      "integrity_risk": "integrity_risk_v1.0"
+    },
+    "computed_at": "2026-09-11T16:57:33.047489+00:00",
+    "event_ticker": "KXNVDAA-28JANHEAD",
+    "venue": "kalshi",
+    "structure": {
+      "classes": [
+        "small_information_circle"
+      ],
+      "circle_size": "small",
+      "lead_time": "days",
+      "subject_can_influence": false,
+      "source_concentration": "single_org",
+      "provenance": "series_rules_v1.1",
+      "evidence": [
+        {
+          "text": "Company-reported metric: finance and investor relations know the number before the earnings release"
+        }
+      ]
+    },
+    "scores": {
+      "information_exposure": {
+        "value": 70,
+        "label": "High exposure",
+        "confidence": "medium",
+        "suppressed": false,
+        "not_applicable": false,
+        "drivers": [
+          "Information structure: small_information_circle",
+          "Circle small, lead time days, source single_org"
+        ],
+        "calculation_version": "information_exposure_v1.0",
+        "provenance": "series_rules_v1.1",
+        "evidence": [
+          {
+            "text": "Information structure: small_information_circle",
+            "metric": "risk_classes",
+            "value": "small_information_circle"
+          },
+          {
+            "text": "Circle small, lead time days, source single_org",
+            "metric": "structure_dimensions"
+          },
+          {
+            "text": "Company-reported metric: finance and investor relations know the number before the earnings release"
+          }
+        ]
+      },
+      "outcome_control": {
+        "value": null,
+        "label": "Not applicable",
+        "confidence": "high",
+        "suppressed": false,
+        "not_applicable": true,
+        "drivers": [
+          "Not meaningful for this event's information structure"
+        ],
+        "calculation_version": "outcome_control_v1.0",
+        "evidence": [
+          {
+            "text": "Not meaningful for this event's information structure"
+          }
+        ]
+      },
+      "move_leads_catalyst": {
+        "value": null,
+        "label": "Insufficient Data",
+        "confidence": "insufficient",
+        "suppressed": true,
+        "not_applicable": false,
+        "drivers": [
+          "No catalyst timeline provided"
+        ],
+        "calculation_version": "move_leads_catalyst_v1.0",
+        "evidence": [
+          {
+            "text": "No catalyst timeline provided"
+          }
+        ]
+      },
+      "longshot_repricing": {
+        "value": null,
+        "label": "Insufficient Data",
+        "confidence": "insufficient",
+        "suppressed": true,
+        "not_applicable": false,
+        "drivers": [
+          "No reveal schedule provided"
+        ],
+        "calculation_version": "longshot_repricing_v1.0",
+        "evidence": [
+          {
+            "text": "No reveal schedule provided"
+          }
+        ]
+      },
+      "pre_broadcast_convergence": {
+        "value": null,
+        "label": "Not applicable",
+        "confidence": "high",
+        "suppressed": false,
+        "not_applicable": true,
+        "drivers": [
+          "Not meaningful for this event's information structure"
+        ],
+        "calculation_version": "pre_broadcast_convergence_v1.0",
+        "evidence": [
+          {
+            "text": "Not meaningful for this event's information structure"
+          }
+        ]
+      },
+      "thin_leg_conviction": {
+        "value": null,
+        "label": "Not applicable",
+        "confidence": "high",
+        "suppressed": false,
+        "not_applicable": true,
+        "drivers": [
+          "Not meaningful for this event's information structure"
+        ],
+        "calculation_version": "thin_leg_conviction_v1.0",
+        "evidence": [
+          {
+            "text": "Not meaningful for this event's information structure"
+          }
+        ]
+      },
+      "cross_venue_lead_lag": {
+        "value": null,
+        "label": "Insufficient Data",
+        "confidence": "insufficient",
+        "suppressed": true,
+        "not_applicable": false,
+        "drivers": [
+          "No twin resolved on the other venue"
+        ],
+        "calculation_version": "cross_venue_lead_lag_v1.0",
+        "evidence": [
+          {
+            "text": "No twin resolved on the other venue"
+          }
+        ]
+      },
+      "trade_size_anomaly": {
+        "value": 43,
+        "label": "Elevated exposure",
+        "confidence": "medium",
+        "suppressed": false,
+        "not_applicable": false,
+        "drivers": [
+          "Largest single print on KXNVDAA-28JANHEAD-46000 carried 36% of its $528 tape (window is 100% of 24h flow; print is 64d old)"
+        ],
+        "calculation_version": "trade_size_anomaly_v1.2",
+        "leading_ticker": "KXNVDAA-28JANHEAD-46000",
+        "flag_notional": 528.02,
+        "window_coverage": 1.0,
+        "largest_print_age_s": 5535847,
+        "evidence": [
+          {
+            "text": "Largest single print on KXNVDAA-28JANHEAD-46000 carried 36% of its $528 tape (window is 100% of 24h flow; print is 64d old)",
+            "metric": "max_print_share",
+            "value": 0.357
+          }
+        ]
+      },
+      "thin_move_anomaly": {
+        "value": 100,
+        "label": "High exposure",
+        "confidence": "high",
+        "suppressed": false,
+        "not_applicable": false,
+        "drivers": [
+          "KXNVDAA-28JANHEAD-46000 repriced 5.17 log-odds on only 8 contracts of window volume"
+        ],
+        "calculation_version": "thin_move_anomaly_v1.1",
+        "leading_ticker": "KXNVDAA-28JANHEAD-46000",
+        "flag_notional": 7.22,
+        "evidence": [
+          {
+            "text": "KXNVDAA-28JANHEAD-46000 repriced 5.17 log-odds on only 8 contracts of window volume",
+            "metric": "thin_move_log_odds",
+            "value": 5.17
+          }
+        ]
+      },
+      "trade_roundness": {
+        "value": 6,
+        "label": "Low exposure",
+        "confidence": "medium",
+        "suppressed": false,
+        "not_applicable": false,
+        "drivers": [
+          "11% of substantive prints on KXNVDAA-28JANHEAD-52000 share one size (200 contracts)"
+        ],
+        "calculation_version": "trade_roundness_v1.1",
+        "leading_ticker": "KXNVDAA-28JANHEAD-52000",
+        "flag_notional": 478.0,
+        "evidence": [
+          {
+            "text": "11% of substantive prints on KXNVDAA-28JANHEAD-52000 share one size (200 contracts)",
+            "metric": "modal_size_share",
+            "value": 0.111
+          }
+        ]
+      }
+    },
+    "integrity_risk": {
+      "integrity_risk": {
+        "value": 70,
+        "label": "High exposure",
+        "confidence": "high"
+      },
+      "floors_applied": [
+        "structural exposure 70"
+      ],
+      "drivers": [
+        "Information structure: small_information_circle",
+        "Largest single print on KXNVDAA-28JANHEAD-46000 carried 36% of its $528 tape (window is 100% of 24h flow; print is 64d old)",
+        "KXNVDAA-28JANHEAD-46000 repriced 5.17 log-odds on only 8 contracts of window volume",
+        "11% of substantive prints on KXNVDAA-28JANHEAD-52000 share one size (200 contracts)"
+      ],
+      "detectors_scored": 4,
+      "detectors_total": 10
+    },
+    "scope": {
+      "threshold": 0.0,
+      "total_markets": 6,
+      "scored_markets": 6,
+      "excluded": {
+        "no_ticker": 0,
+        "terminal_lifecycle": 0,
+        "below_volume_floor": 0
+      },
+      "excluded_total": 0,
+      "excluded_below_floor": 0,
+      "max_market_volume": 9394.03,
+      "scorable": true
+    }
+  },
+  "underwriting": {
+    "calculation_version": "underwriting_v1.3",
+    "profile_version": "underwriting_profile_v0",
+    "underwriting_score": 57,
+    "underwriting_blend": 57,
+    "underwriting_label": "Caution",
+    "underwriting_confidence": "medium",
+    "verdict": "Tradable with care. Primary risk: some participants plausibly know the outcome early.",
+    "updated_at": "2026-09-11T16:57:33.053740+00:00",
+    "manipulation_resistance": {
+      "score": 59,
+      "confidence": "medium",
+      "summary": "Outcome is difficult for a market participant to influence.",
+      "factors": [
+        "Structure: no elevated pattern",
+        "Largest single print on KXNVDAA-28JANHEAD-46000 carried 36% of its $528 tape (window is 100% of 24h flow; print is 64d old)",
+        "KXNVDAA-28JANHEAD-46000 repriced 5.17 log-odds on only 8 contracts of window volume",
+        "11% of substantive prints on KXNVDAA-28JANHEAD-52000 share one size (200 contracts)"
+      ],
+      "basis": "measured",
+      "label": "Caution"
+    },
+    "information_fairness": {
+      "score": 40,
+      "confidence": "medium",
+      "summary": "A concentrated group plausibly knows this outcome before the market does.",
+      "factors": [
+        "Structure: small_information_circle"
+      ],
+      "basis": "measured",
+      "label": "High Risk"
+    },
+    "settlement_reliability": {
+      "score": 92,
+      "confidence": "medium",
+      "summary": "Resolution is explicit and objectively sourced.",
+      "factors": [
+        "Resolution rules read: Clear"
+      ],
+      "basis": "measured",
+      "label": "Strong"
+    },
+    "market_quality": {
+      "score": 46,
+      "confidence": "high",
+      "summary": "Tradable, but expect execution cost beyond small sizes.",
+      "factors": [
+        "Outcome quality 58 (notional-weighted across 6 scored legs)",
+        "$100 order: 4.8c slippage (~5% of a 93c contract)",
+        "$1,000 order: book too thin to fill",
+        "$10,000 order: book too thin to fill"
+      ],
+      "basis": "measured",
+      "label": "High Risk"
+    },
+    "integrity_axis_score": 60,
+    "integrity_axis_label": "Caution",
+    "caps_detail": []
+  }
+}

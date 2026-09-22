@@ -118,7 +118,7 @@ Type help for commands, or just ask a question.
 |---------|-------------|
 | `search [theme\|ticker\|query]` | Find markets by keyword or theme (Octagon-backed when key set) |
 | `search edge [--min-edge N]` | Scan all markets by model edge (Octagon `markets-with-edge`) |
-| `similar <ticker\|"query">` | Semantic neighbors via Octagon embeddings |
+| `similar <ticker\|"query">` | Related markets via Octagon — taxonomy walk from a ticker, keyword relevance from a query |
 | `clusters [--label X]` | Browse thematic clusters of the Kalshi universe |
 | `clusters <id>` | List markets inside a cluster |
 | `clusters --behavioral` | Behavioral clusters by 30-day return vectors |
@@ -137,8 +137,8 @@ Type help for commands, or just ask a question.
 | `series` / `series <ticker>` | Kalshi series rollup (24h vol, market count) |
 | `series candles <ticker>` | Series-level NAV (basket of top sub-markets) |
 | `catalysts upcoming --days N` | Markets closing in the next N days, grouped by week |
-| `trust <event_ticker>` | Trader Trust scorecard — per-market integrity scores (table view) |
-| `trust <event> --market <market>` | Single-market Trader Trust detail card (use `--verbose` for evidence) |
+| `trust <event_ticker>` | Octagon Trust Index — overall score, how Integrity and Trade quality add up, and the trust profile. `--verbose` adds per-contract market quality |
+| `trust <event> --market <market>` | Single-market Trust Index detail card (use `--verbose` for evidence) |
 | `report <ticker>` | Full Octagon markdown report for an event (accepts event/market/series/URL). `--refresh` forces a fresh pull. |
 | `octagon <question>` | Conversational Octagon Prediction Markets Agent — discovery, edge screens, similar markets, reports. Multi-turn: context persists across TUI turns *and* one-shot CLI runs (stored in `~/.kalshi-bot`); `octagon reset` starts a new conversation. Example: `kalshi octagon "top Politics edges"` then `kalshi octagon "pull the report for the first one"` |
 | `portfolio settlements` | Realized P&L ledger — auto-syncs settled positions from Kalshi, joined with the model's view at entry |
@@ -187,6 +187,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--performance` | Include win rate, Sharpe, Brier scores (portfolio) |
 | `--dry-run` | Scan without persisting edges (watch) |
 | `--verbose` | Verbose output |
+| `--market <market>` | Single-market detail card instead of the event view (trust) |
 | `--min-edge <n>` | Minimum edge threshold in pp (backtest default 0.5) |
 | `--interval <min>` | Scan interval in minutes (watch) |
 | `--live` | Force 15m scan interval (watch) |
@@ -231,7 +232,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 
 ### Discovery & Portfolio (Octagon-powered)
 
-The `search`, `similar`, `clusters`, `peers`, `correlate`, and `basket` commands turn the whole Kalshi universe into a queryable database. When `OCTAGON_API_KEY` is set the bot routes searches through Octagon's typed endpoints — semantic embedding lookups, nightly k-means clusters (thematic + behavioral), Pearson correlation matrices, and one-call diversified basket construction with cluster caps and pairwise-correlation gates. Without a key, `search` and `search edge` fall back to the local SQLite cache.
+The `search`, `similar`, `clusters`, `peers`, `correlate`, and `basket` commands turn the whole Kalshi universe into a queryable database. When `OCTAGON_API_KEY` is set the bot routes searches through Octagon's typed endpoints — taxonomy-ranked related markets, nightly k-means clusters (thematic + behavioral), Pearson correlation matrices, and one-call diversified basket construction with cluster caps and pairwise-correlation gates. Without a key, `search` and `search edge` fall back to the local SQLite cache.
 
 ```bash
 # Free-text + structured search (semantic full-text + filters)
@@ -240,7 +241,7 @@ kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
 # Edge ranking from Octagon's latest run (server-side, no local pre-fetch)
 kalshi search edge --min-edge 5 --limit 10 --sort-by total_volume
 
-# Semantic neighbors — catches matches keyword search misses
+# Related markets — same event, then series, then category, each by 24h volume
 kalshi similar KXBTCD-26DEC31-T100000 --top-k 25
 kalshi similar -q "Will Bitcoin pierce six figures" --category crypto
 

@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from 'node:util';
 import type { ScanResult } from '../scan/loop.js';
 import type { EdgeSnapshot } from '../scan/types.js';
 import type { EdgeRow } from '../db/edge.js';
@@ -7,11 +8,13 @@ function truncate(s: string, max: number): string {
 }
 
 export function formatTable(headers: string[], rows: string[][]): string {
+  // Measure visible width so ANSI-colored cells don't skew the columns.
+  const width = (s: string) => stripVTControlCharacters(s).length;
   const colWidths = headers.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => (r[i] ?? '').length))
+    Math.max(width(h), ...rows.map((r) => width(r[i] ?? '')))
   );
 
-  const pad = (s: string, w: number) => s.padEnd(w);
+  const pad = (s: string, w: number) => s + ' '.repeat(w - width(s));
   const sep = '─';
 
   const topBorder = '┌' + colWidths.map((w) => sep.repeat(w + 2)).join('┬') + '┐';

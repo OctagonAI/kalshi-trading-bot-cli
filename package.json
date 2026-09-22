@@ -1,6 +1,6 @@
 {
   "name": "kalshi-trading-bot-cli",
-  "version": "2.1.11",
+  "version": "2.2.0",
   "description": "Kalshi Trading Bot CLI - AI-powered prediction market terminal.",
   "license": "MIT",
   "author": "Octagon AI, Inc.",
@@ -40,7 +40,7 @@
     "dev": "bun --watch run src/index.tsx",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:integration": "bun test **/*.itest.ts",
+    "test:integration": "KALSHI_BOT_LIVE_TESTS=1 bun test **/*.itest.ts",
     "test:watch": "bun test --watch",
     "gateway:login": "bun run src/gateway/index.ts login",
     "gateway": "bun run src/gateway/index.ts run"

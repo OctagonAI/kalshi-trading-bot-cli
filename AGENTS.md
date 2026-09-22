@@ -1,104 +1,92 @@
 # Repository Guidelines
 
-- A CLI-based AI agent for deep financial research and Kalshi prediction market trading, built with TypeScript, Ink (React for CLI), and LangChain.
+A terminal CLI for Kalshi prediction-market research and trading: market
+discovery and edge scanning, Octagon-backed analysis, risk-gated order
+placement, backtesting, and a conversational agent. TypeScript on Bun.
 
 ## Project Structure
 
-- Source code: `src/`
-  - Agent core: `src/agent/` (agent loop, prompts, scratchpad, token counting, types)
-  - CLI interface: `src/cli.tsx` (Ink/React), entry point: `src/index.tsx`
-  - Components: `src/components/` (Ink UI components)
-  - Hooks: `src/hooks/` (React hooks for agent runner, model selection, input history)
-  - Model/LLM: `src/model/llm.ts` (multi-provider LLM abstraction)
-  - Tools: `src/tools/` (financial search, web search, browser, skill tool)
-  - Tool descriptions: `src/tools/descriptions/` (rich descriptions injected into system prompt)
-  - Finance tools: `src/tools/finance/` (prices, fundamentals, filings, insider trades, etc.)
-  - Search tools: `src/tools/search/` (Exa preferred, Tavily fallback)
-  - Browser: `src/tools/browser/` (Playwright-based web scraping)
-  - Skills: `src/skills/` (SKILL.md-based extensible workflows, e.g. DCF valuation)
-  - Utils: `src/utils/` (env, config, caching, token estimation, markdown tables)
-  - Evals: `src/evals/` (LangSmith evaluation runner with Ink UI)
-- Config: `.kalshi-trading-bot-cli/settings.json` (persisted model/provider selection)
-- Environment: `.env` (API keys; see `env.example`)
-- Scripts: `scripts/release.sh`
+- Entry point: `src/index.tsx` (also the `kalshi` bin). Flag handling lives in
+  `src/commands/parse-args.ts`; one-shot commands go through
+  `src/commands/dispatch.ts`, the interactive TUI through `src/cli.ts`.
+- `src/commands/` — one module per command (`trust.ts`, `similar.ts`,
+  `analyze.ts`, `basket.ts`, `series.ts`, …), plus `help.ts` (help topics) and
+  `scan-formatters.ts` (shared table rendering).
+- `src/tools/` — tools exposed to the agent. `registry.ts` registers them
+  conditionally on env vars; `kalshi/` is the signed exchange client
+  (`api.ts`, `search-index.ts`, `dlq.ts`), `fetch/` is the web-fetch tool,
+  `v2/` holds the newer tool set.
+- `src/scan/` — Octagon clients and the edge pipeline: `octagon-events-api.ts`,
+  `octagon-kalshi-api.ts`, `octagon-reports-api.ts`, `invoker.ts`,
+  `edge-computer.ts`.
+- `src/db/` — local SQLite (`bun:sqlite`): `schema.ts` (migrations),
+  `index.ts` (`getDb`/`createDb`), `event-index.ts`, `edge.ts`.
+- `src/risk/` — Kelly sizing, mandate caps, circuit breaker.
+- Also: `src/backtest/`, `src/eval/`, `src/daemon/` (maintenance loop),
+  `src/gateway/`, `src/audit/`, `src/setup/wizard.ts`, `src/components/` +
+  `src/controllers/` (pi-tui UI), `src/model/`, `src/utils/`, `src/theme.ts`.
+- User data lives under `~/.kalshi-bot/` (see `src/utils/paths.ts`):
+  `config.json`, `kalshi-bot.db`, `messages/chat_history.json`, `.env`.
+  Always build these paths with `appPath(...)`.
 
 ## Build, Test, and Development Commands
 
-- Runtime: Bun (primary). Use `bun` for all commands.
-- Install deps: `bun install`
-- Run: `bun run start` or `bun run src/index.tsx`
-- Dev (watch mode): `bun run dev`
-- Type-check: `bun run typecheck`
-- Tests: `bun test`
-- Evals: `bun run src/evals/run.ts` (full) or `bun run src/evals/run.ts --sample 10` (sampled)
-- CI runs `bun run typecheck` and `bun test` on push/PR.
+- Runtime: Bun. Install deps with `bun install`.
+- Run: `bun run start` (or `bun run dev` for watch mode).
+- Type-check: `bun run typecheck`. Tests: `bun test`.
+- Integration tests (hit live APIs, need keys): `bun run test:integration`.
+- Gateway: `bun run gateway:login`, `bun run gateway`.
+- Run `bun run typecheck` and `bun test` before pushing.
 
 ## Coding Style & Conventions
 
-- Language: TypeScript (ESM, strict mode). JSX via React (Ink for CLI rendering).
-- Prefer strict typing; avoid `any`.
-- Keep files concise; extract helpers rather than duplicating code.
-- Add brief comments for tricky or non-obvious logic.
-- Do not add logging unless explicitly asked.
-- Do not create README or documentation files unless explicitly asked.
+- TypeScript, ESM, strict mode. Prefer precise types; avoid `any`.
+- The UI is [@mariozechner/pi-tui](https://www.npmjs.com/package/@mariozechner/pi-tui),
+  not Ink/React. `.tsx` is used only for the entry point.
+- Match the surrounding style; keep changes surgical.
+- Comment non-obvious logic — especially anything that encodes an upstream API
+  quirk — and say why, not what.
+- All network calls go through `fetchWithDeadline` (`src/utils/http.ts`) so a
+  half-open connection can't hang the process.
+- Colored table cells must go through `formatTable`, which measures visible
+  width; padding by raw `.length` breaks alignment on ANSI strings.
 
-## LLM Providers
+### Changing a command's flags or signature
 
-- Supported: OpenAI (default), Anthropic, Google, xAI (Grok), OpenRouter, Ollama (local).
-- Default model: `gpt-5.4`. Provider detection is prefix-based (`claude-` -> Anthropic, `gemini-` -> Google, etc.).
-- Fast models for lightweight tasks: see `FAST_MODELS` map in `src/model/llm.ts`.
-- Anthropic uses explicit `cache_control` on system prompt for prompt caching cost savings.
-- Users switch providers/models via `/model` command in the CLI.
+Update every one of these together, or the CLI, TUI and docs drift apart:
+`src/commands/parse-args.ts`, `src/commands/help.ts`, `src/commands/index.ts`,
+`src/commands/dispatch.ts`, `src/cli.ts`, `src/components/intro.ts`,
+`README.md`, `src/__tests__/e2e.test.ts`, `src/gateway/commands/handler.ts`.
 
-## Tools
+## Agent Tools
 
-- `financial_search`: primary tool for all financial data queries (prices, metrics, filings). Delegates to multiple sub-tools internally.
-- `financial_metrics`: direct metric lookups (revenue, market cap, etc.).
-- `read_filings`: SEC filing reader for 10-K, 10-Q, 8-K documents.
-- `web_search`: general web search (Exa if `EXASEARCH_API_KEY` set, else Tavily if `TAVILY_API_KEY` set).
-- `browser`: Playwright-based web scraping for reading pages the agent discovers.
-- `skill`: invokes SKILL.md-defined workflows (e.g. DCF valuation). Each skill runs at most once per query.
-- Tool registry: `src/tools/registry.ts`. Tools are conditionally included based on env vars.
-
-## Skills
-
-- Skills live as `SKILL.md` files with YAML frontmatter (`name`, `description`) and markdown body (instructions).
-- Built-in skills: `src/skills/dcf/SKILL.md`.
-- Discovery: `src/skills/registry.ts` scans for SKILL.md files at startup.
-- Skills are exposed to the LLM as metadata in the system prompt; the LLM invokes them via the `skill` tool.
-
-## Agent Architecture
-
-- Agent loop: `src/agent/agent.ts`. Iterative tool-calling loop with configurable max iterations (default 10).
-- Scratchpad: `src/agent/scratchpad.ts`. Single source of truth for all tool results within a query.
-- Context management: Anthropic-style. Full tool results kept in context; oldest results cleared when token threshold exceeded.
-- Final answer: generated in a separate LLM call with full scratchpad context (no tools bound).
-- Events: agent yields typed events (`tool_start`, `tool_end`, `thinking`, `answer_start`, `done`, etc.) for real-time UI updates.
+Registered in `src/tools/registry.ts`, gated on available env vars:
+`kalshi_search`, `kalshi_trade`, `portfolio_overview`, `portfolio_query`,
+`portfolio_review`, `exchange_status`, `edge_query`, `risk_status`,
+`scan_markets`, `octagon_report`, `web_fetch`, `web_search`.
 
 ## Environment Variables
 
-- LLM keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`
-- Ollama: `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`)
-- Finance: `FINANCIAL_DATASETS_API_KEY`
-- Search: `EXASEARCH_API_KEY` (preferred), `TAVILY_API_KEY` (fallback)
-- Tracing: `LANGSMITH_API_KEY`, `LANGSMITH_ENDPOINT`, `LANGSMITH_PROJECT`, `LANGSMITH_TRACING`
-- Never commit `.env` files or real API keys.
-
-## Version & Release
-
-- Version format: SemVer `MAJOR.MINOR.PATCH`. Tag prefix: `v`.
-- Release script: `bash scripts/release.sh [version]` (defaults to today's date).
-- Release flow: bump version in `package.json`, create git tag, push tag, create GitHub release via `gh`.
-- Do not push or publish without user confirmation.
+- Kalshi: `KALSHI_API_KEY`, and `KALSHI_PRIVATE_KEY` or
+  `KALSHI_PRIVATE_KEY_FILE` (RSA-PSS request signing). `KALSHI_USE_DEMO=true`
+  targets the demo exchange.
+- Octagon: `OCTAGON_API_KEY`, `OCTAGON_BASE_URL`, `OCTAGON_CONCURRENCY`.
+- LLM: `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OLLAMA_BASE_URL`,
+  `DEFAULT_MODEL`. Search: `TAVILY_API_KEY`. Telemetry: `TELEMETRY_ENABLED`.
+- Loaded by `src/utils/env.ts` from `~/.kalshi-bot/.env` or a local `.env`.
+  Never commit `.env` files, `*.pem` keys, or real credentials.
 
 ## Testing
 
-- Framework: Bun's built-in test runner (primary), Jest config exists for legacy compatibility.
-- Tests colocated as `*.test.ts`.
-- Run `bun test` before pushing when you touch logic.
+- Bun's built-in runner. Unit tests are colocated in `__tests__/` as
+  `*.test.ts`; integration tests are `*.itest.ts` and are excluded from
+  `bun test`.
+- Use `createDb(':memory:')` for database tests — never the real DB.
+- Stub the network by replacing `globalThis.fetch`; restore it in `afterEach`.
 
-## Security
+## Version & Release
 
-- API keys stored in `.env` (gitignored). Users can also enter keys interactively via the CLI.
-- Config stored in `.kalshi-trading-bot-cli/settings.json` (gitignored).
-- Never commit or expose real API keys, tokens, or credentials.
+- SemVer, tag prefix `v`. Release script: `bash scripts/release.sh [version]`.
+- Packaging is governed by `.npmignore` (there is no `files` allowlist in
+  `package.json`). Verify with `npm pack --dry-run` after changing it.
+- Do not push, tag, or publish without explicit confirmation.

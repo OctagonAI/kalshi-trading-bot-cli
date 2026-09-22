@@ -15,7 +15,6 @@ function json(status: number, body: unknown): Response {
 
 beforeEach(() => {
   requests = [];
-  process.env.OCTAGON_API_KEY = 'test-key';
   transcriptFile = join(tmpdir(), `octagon-transcript-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
   process.env.OCTAGON_TRANSCRIPT_PATH = transcriptFile;
   resetOctagonConversation();

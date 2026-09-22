@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { getAppDir } from './paths.js';
+import { dirname } from 'path';
+import { appPath } from './paths.js';
 
 /**
  * Represents a conversation entry (user message + agent response pair)
@@ -31,8 +31,11 @@ export class LongTermChatHistory {
   private messages: ConversationEntry[] = [];
   private loaded = false;
 
-  constructor(baseDir: string = process.cwd()) {
-    this.filePath = join(baseDir, getAppDir(), MESSAGES_DIR, MESSAGES_FILE);
+  constructor() {
+    // appPath() rather than join(baseDir, getAppDir(), …): path.join does not
+    // reset on an absolute segment, so a relative baseDir produced
+    // <cwd>/Users/<name>/.kalshi-bot/… — history was silently per-directory.
+    this.filePath = appPath(MESSAGES_DIR, MESSAGES_FILE);
   }
 
   /**

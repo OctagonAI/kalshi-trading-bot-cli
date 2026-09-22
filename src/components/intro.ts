@@ -68,11 +68,11 @@ export class IntroComponent extends Container {
     this.addChild(new Spacer(1));
     const cmd = (label: string) => theme.muted(label.padEnd(11));
     this.addChild(new Text(cmd('/search') + 'Search events by theme, ticker, or free-text; /search edge for edge scan', 0, 0));
-    this.addChild(new Text(cmd('/similar') + '<ticker|"text">  Semantic neighbors (Octagon embeddings)', 0, 0));
+    this.addChild(new Text(cmd('/similar') + '<ticker|"text">  Related markets (taxonomy walk / keyword relevance)', 0, 0));
     this.addChild(new Text(cmd('/clusters') + '[--ranked|--behavioral]  Browse thematic & behavioral clusters', 0, 0));
     this.addChild(new Text(cmd('/peers') + '<ticker>  Markets in the same cluster', 0, 0));
     this.addChild(new Text(cmd('/events') + '[ticker]  Octagon events + outcome ladder', 0, 0));
-    this.addChild(new Text(cmd('/trust') + '<event_ticker>  Trader Trust scorecard (per-market integrity)', 0, 0));
+    this.addChild(new Text(cmd('/trust') + '<event_ticker>  Octagon Trust Index (--verbose for per-contract)', 0, 0));
     this.addChild(new Text(cmd('/report') + '<event_ticker>  Full Octagon markdown report (--refresh for fresh)', 0, 0));
     this.addChild(new Text(cmd('/octagon') + '<question>  Conversational Octagon agent (discovery, edge, follow-ups)', 0, 0));
     this.addChild(new Text(cmd('/series') + '[ticker]  Series rollup; /series candles <SERIES> for NAV', 0, 0));

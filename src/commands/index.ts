@@ -511,7 +511,7 @@ export async function executeSlashCommand(command: string | undefined, args: str
     case 'trust': {
       const parsed = parseArgs(['trust', ...args]);
       return {
-        output: 'Fetching Trader Trust scorecard...',
+        output: 'Fetching Trust Index...',
         asyncFollowUp: async () => {
           const resp = await handleTrust(parsed);
           return resp.ok ? formatTrustHuman(resp.data) : (resp.error?.message ?? 'trust failed');
