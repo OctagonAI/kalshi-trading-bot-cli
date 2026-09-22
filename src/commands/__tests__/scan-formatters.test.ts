@@ -58,10 +58,10 @@ describe('formatTable', () => {
   });
 
   test('shrinking never slices an ANSI escape in half', () => {
-    const green = (s: string) => `[32m${s}[39m`;
+    const green = (s: string) => `\x1b[32m${s}\x1b[39m`;
     const out = formatTable(['A', 'B'], [[green('a very long coloured cell that must shrink'), 'x']], 30);
     // Whatever survives, the colour is opened and closed — never a bare fragment
-    expect(out).toContain('[32m');
+    expect(out).toContain('\x1b[32m');
     expect(stripVTControlCharacters(out).split('\n').every((l) => l.length <= 30)).toBe(true);
   });
 });
