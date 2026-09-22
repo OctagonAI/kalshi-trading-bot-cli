@@ -29,13 +29,11 @@ describe('searchOctagonMarkets', () => {
   let originalFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
-    process.env.OCTAGON_API_KEY = 'sk_test_key';
     originalFetch = globalThis.fetch;
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.OCTAGON_API_KEY;
   });
 
   test('drills into an event on the venue-agnostic route, pinned to one venue', async () => {

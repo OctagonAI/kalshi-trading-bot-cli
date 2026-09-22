@@ -15,9 +15,6 @@ describe('searchOctagonEvents', () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    // Set explicitly so the client does not throw before reaching fetch, and so
-    // a real key loaded from .env can never send these tests to a live API.
-    process.env.OCTAGON_API_KEY = 'sk_test';
     globalThis.fetch = mock(async (url: string | URL | Request) => {
       lastUrl = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
       return new Response(JSON.stringify({ data: [], next_cursor: null, has_more: false }), {
@@ -29,7 +26,6 @@ describe('searchOctagonEvents', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.OCTAGON_API_KEY;
   });
 
   test('hits the venue-agnostic route and forces venues=kalshi', async () => {
