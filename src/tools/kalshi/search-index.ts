@@ -2,8 +2,10 @@ import { getDb } from '../../db/index.js';
 import {
   countIndexRows,
   getIndexAge,
+  getLastFullRefresh,
   getLastRefresh,
   pruneStaleEvents,
+  setLastFullRefresh,
   setLastRefresh,
   upsertIndexEvents,
 } from '../../db/event-index.js';
@@ -112,16 +114,22 @@ async function fetchSeriesTags(seriesTickers: string[], totalEvents: number): Pr
  * index — so `forceRefreshIndex()` quietly fetched a `min_updated_ts` delta and
  * skipped the staleness sweep, leaving the index exactly as stale as before.
  * Observed live as a "rebuild" that produced 4,882 rows instead of ~12,700.
+ *
+ * The TTL is measured from the last full rebuild, not the last refresh. Every
+ * incremental pass advances `lastRefresh`, and one runs whenever the index is
+ * two hours old, so anyone using the CLI daily would otherwise stay inside the
+ * TTL forever and never get the full sweep that removes delisted events.
  */
 export function shouldRunIncremental(
   force: boolean,
   lastRefresh: number | null,
+  lastFullRefresh: number | null,
   rowCount: number,
   now: number,
 ): boolean {
   if (force) return false;
-  if (lastRefresh === null || rowCount === 0) return false;
-  return now - lastRefresh < INDEX_TTL_MS;
+  if (lastRefresh === null || lastFullRefresh === null || rowCount === 0) return false;
+  return now - lastFullRefresh < INDEX_TTL_MS;
 }
 
 /**
@@ -140,9 +148,16 @@ async function refreshIndex(force = false): Promise<void> {
 
   try {
     // An incremental pass only makes sense from an index that is populated and
-    // recent enough to trust as a baseline; anything older rebuilds in full.
+    // fully rebuilt recently enough to trust as a baseline; anything older
+    // rebuilds in full.
     const lastRefresh = getLastRefresh(db);
-    const incremental = shouldRunIncremental(force, lastRefresh, countIndexRows(db), Date.now());
+    const incremental = shouldRunIncremental(
+      force,
+      lastRefresh,
+      getLastFullRefresh(db),
+      countIndexRows(db),
+      Date.now(),
+    );
 
     // Only ~2.5% of open events change in an hour, so the routine 2-hourly
     // refresh walks 2-6 pages instead of all 64.
@@ -237,7 +252,10 @@ async function refreshIndex(force = false): Promise<void> {
     // starts early enough to cover what this one never reached (a truncated
     // first build has no stamp, and simply rebuilds again). The page cap sits
     // well above the ~64 pages the full universe takes, so this can't loop.
-    if (!truncated) setLastRefresh(db, Date.now());
+    // Only a complete full walk restarts the TTL that forces the next rebuild.
+    const finished = Date.now();
+    if (!truncated) setLastRefresh(db, finished);
+    if (completeSweep) setLastFullRefresh(db, finished);
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     logger.info(

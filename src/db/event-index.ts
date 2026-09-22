@@ -438,6 +438,26 @@ export function setLastRefresh(db: Database, timestamp: number): void {
 }
 
 /**
+ * Get the timestamp of the last complete full rebuild, or null if there has
+ * never been one. Unlike last_refresh, incremental passes do not advance it.
+ */
+export function getLastFullRefresh(db: Database): number | null {
+  const row = db.query("SELECT value FROM event_index_meta WHERE key = 'last_full_refresh'").get() as
+    | { value: string }
+    | null;
+  return row ? parseInt(row.value, 10) : null;
+}
+
+/**
+ * Set the last full rebuild timestamp.
+ */
+export function setLastFullRefresh(db: Database, timestamp: number): void {
+  db.query("INSERT OR REPLACE INTO event_index_meta (key, value) VALUES ('last_full_refresh', $ts)").run({
+    $ts: String(timestamp),
+  });
+}
+
+/**
  * Reconstruct KalshiEvent[] from the local index for given event tickers.
  * Parses markets_json back into nested market objects.
  *

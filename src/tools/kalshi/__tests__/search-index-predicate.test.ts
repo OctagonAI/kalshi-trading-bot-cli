@@ -10,30 +10,44 @@ describe('shouldRunIncremental', () => {
     // index, refreshed minutes ago — so it fetched a min_updated_ts delta and
     // skipped its staleness sweep. Live, that produced 4,882 rows where a real
     // rebuild produces ~12,700.
-    expect(shouldRunIncremental(true, now - HOUR, 13_811, now)).toBe(false);
+    expect(shouldRunIncremental(true, now - HOUR, now - HOUR, 13_811, now)).toBe(false);
   });
 
   test('a recent, populated index is incremental', () => {
-    expect(shouldRunIncremental(false, now - HOUR, 13_811, now)).toBe(true);
+    expect(shouldRunIncremental(false, now - HOUR, now - HOUR, 13_811, now)).toBe(true);
   });
 
   test('an index older than the TTL rebuilds in full', () => {
-    expect(shouldRunIncremental(false, now - 25 * HOUR, 13_811, now)).toBe(false);
+    expect(shouldRunIncremental(false, now - 25 * HOUR, now - 25 * HOUR, 13_811, now)).toBe(false);
+  });
+
+  test('recent incremental passes do not postpone the full rebuild', () => {
+    // The regression: the TTL was measured from last_refresh, which every
+    // incremental pass advances. A refresh runs once the index is two hours
+    // old, so daily use kept the index inside the TTL and a full sweep never
+    // ran again.
+    expect(shouldRunIncremental(false, now - HOUR, now - 25 * HOUR, 13_811, now)).toBe(false);
   });
 
   test('an empty index rebuilds in full however fresh the stamp', () => {
     // A 0-row index can carry a recent last_refresh; trusting the timestamp
     // alone would leave it empty behind an incremental delta.
-    expect(shouldRunIncremental(false, now - HOUR, 0, now)).toBe(false);
+    expect(shouldRunIncremental(false, now - HOUR, now - HOUR, 0, now)).toBe(false);
   });
 
   test('a never-refreshed index rebuilds in full', () => {
-    expect(shouldRunIncremental(false, null, 0, now)).toBe(false);
-    expect(shouldRunIncremental(false, null, 13_811, now)).toBe(false);
+    expect(shouldRunIncremental(false, null, null, 0, now)).toBe(false);
+    expect(shouldRunIncremental(false, null, null, 13_811, now)).toBe(false);
+  });
+
+  test('an index with no recorded full rebuild rebuilds in full', () => {
+    // Indexes built before last_full_refresh existed carry only last_refresh;
+    // their first refresh after upgrading has to be a full sweep.
+    expect(shouldRunIncremental(false, now - HOUR, null, 13_811, now)).toBe(false);
   });
 
   test('the TTL boundary is exclusive', () => {
-    expect(shouldRunIncremental(false, now - 24 * HOUR, 13_811, now)).toBe(false);
-    expect(shouldRunIncremental(false, now - 24 * HOUR + 1, 13_811, now)).toBe(true);
+    expect(shouldRunIncremental(false, now - HOUR, now - 24 * HOUR, 13_811, now)).toBe(false);
+    expect(shouldRunIncremental(false, now - HOUR, now - 24 * HOUR + 1, 13_811, now)).toBe(true);
   });
 });
