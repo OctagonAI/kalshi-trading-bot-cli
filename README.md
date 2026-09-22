@@ -213,9 +213,9 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--max-age <n>` | Reject predictions older than N days (backtest, default = `--days`) |
 | `--resolved` | Resolved markets only (backtest) |
 | `--unresolved` | Open markets only (backtest) |
-| `--category <cat>` | Filter by category (backtest, search edge) |
-| `--limit <n>` | Max results to show (search edge, default 20) |
-| `--min-volume <n>` | Min per-contract volume (from Octagon snapshot; falls back to Kalshi lifetime if missing). Backtest default 1. |
+| `--category <cat>` | Filter by category (backtest, search, search edge). On `search`, returns markets instead of events |
+| `--limit <n>` | Max results to show (search default 30, search edge default 20) |
+| `--min-volume <n>` | Backtest: min per-contract volume (from Octagon snapshot; falls back to Kalshi lifetime if missing), default 1. Search, similar, basket build: floor on 24h volume; on `search`, returns markets instead of events |
 | `--min-price <n>` | Min contract price, 0-100 scale (backtest, default 5) |
 | `--max-price <n>` | Max contract price, 0-100 scale (backtest, default 95) |
 | `--export <path>` | Export per-market CSV (backtest) |
@@ -223,7 +223,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--behavioral` | Use behavioral clustering (clusters, peers) |
 | `--ranked` | Rank clusters by historical basket return (clusters) |
 | `--label <substr,...>` | Filter by cluster label substring (clusters, basket build) |
-| `--close-before <iso>` | Only markets closing before this timestamp |
+| `--close-before <iso>` | Only markets closing before this timestamp (search, similar, basket build). On `search`, returns markets instead of events |
 | `--window-days <n>` | Correlation lookback (correlate; basket build) |
 | `--correlation-interval <1h\|1d>` | Override candle bin size for correlate |
 | `--timeframe <1w\|1m\|3m\|6m\|1y>` | Window/bin size for basket commands |
@@ -235,7 +235,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--max-corr <-1..1>` | Pairwise correlation cap (basket build) |
 | `--min-return <n>` | Minimum total_return for clusters --ranked |
 | `--series <ticker>` | Filter to a Kalshi series (search, similar, basket) |
-| `--sort-by <key>` | Sort key for search edge: edge_pp \| expected_return \| total_volume \| model_probability |
+| `--sort-by <key>` | Search: volume_24h \| close_time \| last_price (returns markets instead of events). Search edge: edge_pp \| expected_return \| total_volume \| model_probability |
 | `--probs <csv>` | Per-leg probabilities, e.g. `KX-A:0.62,KX-B:0.55` |
 | `--tickers <csv>` | Comma-separated tickers (correlate, basket backtest/candles) |
 | `-q "text"` | Free-text anchor for similar / basket build |

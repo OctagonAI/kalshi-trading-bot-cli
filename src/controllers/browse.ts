@@ -566,7 +566,7 @@ export class BrowseController {
       const tradeableVolume = (ev: KalshiEvent) =>
         (ev.markets ?? [])
           .filter((m) => isMarketActive(m))
-          .reduce((sum: number, m: any) => sum + (parseFloat(m.volume) || parseFloat(m.volume_fp) || 0), 0);
+          .reduce((sum, m) => sum + (Number(m.volume) || parseFloat(m.volume_fp ?? '') || 0), 0);
       kalshiEvents.sort((a, b) => tradeableVolume(b) - tradeableVolume(a));
 
       // Discard stale response if a newer browse was started

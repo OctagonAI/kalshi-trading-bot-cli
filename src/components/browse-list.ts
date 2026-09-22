@@ -169,7 +169,7 @@ export function createBrowseEventSelector(
   list.onSelect = (item) => onSelect(item.value);
   list.onCancel = () => onCancel();
   container.addChild(list);
-  (container as any)._browseList = list;
+  Object.assign(container, { _browseList: list });
 
   return container;
 }

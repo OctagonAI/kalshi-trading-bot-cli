@@ -397,7 +397,7 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
           : `theme ${localTheme.id}`
         : `"${query}"`;
       if (json) {
-        console.log(JSON.stringify(wrapSuccess('search', { events: results })));
+        console.log(JSON.stringify(wrapSuccess('search', { kind: 'events', events: results })));
       } else {
         console.log(formatIndexEventsHuman(localDescribe, results));
       }
