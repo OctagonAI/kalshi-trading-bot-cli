@@ -359,7 +359,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   const helpTopicCompletions = (typed: string): AutocompleteItem[] | null => {
     const topics = [
       { value: 'search', label: 'search', description: 'Discovery commands' },
-      { value: 'similar', label: 'similar', description: 'Semantic market search (Octagon)' },
+      { value: 'similar', label: 'similar', description: 'Related markets (taxonomy walk / keyword relevance)' },
       { value: 'clusters', label: 'clusters', description: 'Browse thematic & behavioral clusters' },
       { value: 'peers', label: 'peers', description: 'Cluster peers for a ticker' },
       { value: 'correlate', label: 'correlate', description: 'Pairwise correlation matrix' },
@@ -412,7 +412,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       return opts.filter(o => o.value.toLowerCase().includes(lower));
     }},
     // Octagon Kalshi search/clusters/basket
-    { name: 'similar', description: 'Semantic market search by ticker or query', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
+    { name: 'similar', description: 'Related markets by ticker (taxonomy walk) or query (keyword relevance)', getArgumentCompletions: (typed: string): AutocompleteItem[] | null => {
       const opts = [
         { value: '<ticker>', label: '<ticker>', description: 'Anchor by ticker (no embedding call)' },
         { value: '-q "query text"', label: '-q "query text"', description: 'Anchor by free-text (server-side embed)' },
