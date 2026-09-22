@@ -4,7 +4,7 @@
  * OCTAGON_API_KEY is set; the legacy local-SQLite paths remain as fallback.
  */
 import { formatTable } from './scan-formatters.js';
-import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse } from '../scan/octagon-kalshi-api.js';
+import type { KalshiMarketRow, PagedResult, MarketsWithEdgeResponse, EventSearchRow, MarketSearchRow } from '../scan/octagon-kalshi-api.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
@@ -30,7 +30,118 @@ function fmtCloseDate(iso: string | null): string {
   return iso.slice(0, 10);
 }
 
-export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiMarketRow>): string {
+/**
+ * Event-level search results.
+ *
+ * `describe` names what was searched (a theme id, or the raw query) so an empty
+ * result says which question returned nothing rather than printing a bare table.
+ *
+ * Note the column semantics: each row is one event represented by its
+ * best-matching market, so Last and 24h Vol belong to that market, not to the
+ * event as a whole. The endpoint exposes no market count, so there is no Mkts
+ * column.
+ */
+export function formatEventSearchHuman(describe: string, page: PagedResult<EventSearchRow>): string {
+  const lines: string[] = [];
+  const more = page.has_more ? ' (more available)' : '';
+  lines.push(`Events matching ${describe} — ${page.data.length} shown${more}`);
+  lines.push('');
+
+  if (page.data.length === 0) {
+    lines.push(`No events found for ${describe}.`);
+    return lines.join('\n');
+  }
+
+  const rows: string[][] = page.data.map((e) => [
+    eventIdOf(e),
+    truncate(e.title ?? '-', 44),
+    fmtMoney(e.last_price),
+    fmtVol(e.volume_24h),
+    e.category ?? '-',
+    fmtCloseDate(e.close_time ?? null),
+  ]);
+  lines.push(formatTable(
+    ['Event', 'Title', 'Last*', '24h Vol*', 'Category', 'Closes'],
+    rows,
+  ));
+  lines.push('');
+  lines.push('* of the event\'s best-matching market, not an event total.');
+  lines.push(`Drill into one event: search ${eventIdOf(page.data[0])}`);
+  return lines.join('\n');
+}
+
+/** The venue-native identifier; `event_ticker` is venue-prefixed. */
+export function eventIdOf(e: EventSearchRow): string {
+  return e.native_event_ticker ?? e.event_ticker;
+}
+
+/**
+ * The contract's own identity: the market ticker minus its event prefix.
+ * `KXBTCD-33APR0610-T59599.99` → `T59599.99`. Inside one event the prefix is
+ * the same on every row, so showing it costs the 19 columns that used to
+ * truncate away the part that actually differs.
+ */
+export function contractOf(marketTicker: string, eventTicker: string): string {
+  const prefix = `${eventTicker}-`;
+  return marketTicker.startsWith(prefix) ? marketTicker.slice(prefix.length) : marketTicker;
+}
+
+/**
+ * Pick the column that actually distinguishes rows within this event.
+ *
+ * The two venues are mirror images. A Kalshi strike ladder shares one title
+ * ("Bitcoin price on Apr 6, 2033?") and differs by subtitle ("$59,600 or
+ * above"); a Polymarket event shares a subtitle ("Yes") and differs by title
+ * ("Lara Trump"). Choosing by which field varies handles both without a
+ * venue switch.
+ */
+function labelColumn(rows: MarketSearchRow[]): { header: string; pick: (m: MarketSearchRow) => string } {
+  const subOf = (m: MarketSearchRow) => m.yes_subtitle ?? m.subtitle ?? '';
+  const distinctSubs = new Set(rows.map(subOf)).size;
+  const distinctTitles = new Set(rows.map((m) => m.title ?? '')).size;
+  if (distinctSubs > 1 && distinctSubs >= distinctTitles) {
+    return { header: 'Strike', pick: (m) => subOf(m) || '-' };
+  }
+  return { header: 'Outcome', pick: (m) => m.title ?? '-' };
+}
+
+/**
+ * One event's markets. Rows arrive unordered from the API (a ladder comes back
+ * T76999.99, T77749.99, T77499.99, …) and `sort_by` offers no strike option, so
+ * they are ordered here.
+ */
+export function formatEventMarketsHuman(eventTicker: string, page: PagedResult<MarketSearchRow>): string {
+  const lines: string[] = [];
+  const more = page.has_more ? ' (more available)' : '';
+  lines.push(`Markets in ${eventTicker} — ${page.data.length} shown${more}`);
+  lines.push('');
+
+  if (page.data.length === 0) {
+    lines.push(`No markets found for ${eventTicker}.`);
+    return lines.join('\n');
+  }
+
+  const { header, pick } = labelColumn(page.data);
+  const sorted = [...page.data].sort((a, b) =>
+    contractOf(a.native_ticker ?? a.market_ticker, eventTicker).localeCompare(
+      contractOf(b.native_ticker ?? b.market_ticker, eventTicker),
+      undefined,
+      { numeric: true },
+    ),
+  );
+
+  const rows: string[][] = sorted.map((m) => [
+    contractOf(m.native_ticker ?? m.market_ticker, eventTicker),
+    truncate(pick(m), 44),
+    fmtMoney(m.last_price ?? m.yes_ask),
+    fmtVol(m.volume_24h),
+    fmtCloseDate(m.close_time ?? null),
+  ]);
+  lines.push(formatTable(['Contract', header, 'Last', '24h Vol', 'Closes'], rows));
+  return lines.join('\n');
+}
+
+export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiMarketRow | MarketSearchRow>): string {
   const lines: string[] = [];
   const more = page.has_more ? ' (more available)' : '';
   lines.push(`Markets matching "${query}" — ${page.data.length} shown${more}`);
@@ -47,9 +158,53 @@ export function formatMarketSearchHuman(query: string, page: PagedResult<KalshiM
     fmtMoney(m.last_price ?? m.yes_ask),
     fmtVol(m.volume_24h),
     m.category ?? '-',
-    fmtCloseDate(m.close_time),
+    fmtCloseDate(m.close_time ?? null),
   ]);
   lines.push(formatTable(['Ticker', 'Title', 'Last', '24h Vol', 'Category', 'Closes'], rows));
+  return lines.join('\n');
+}
+
+/**
+ * Events read from the local index, used when there is no Octagon key.
+ *
+ * Deliberately the same table shape as formatEventSearchHuman so both paths read
+ * alike. The columns differ only where the index cannot supply the same data: it
+ * has no per-event last price, but it does know how many markets are still open.
+ * The header names the source, because the local index is a different (smaller,
+ * possibly staler) universe than the API.
+ */
+export function formatIndexEventsHuman(
+  describe: string,
+  events: Array<{ event_ticker: string; title: string; category: string | null; markets_json: string | null }>,
+): string {
+  const lines: string[] = [];
+  lines.push(`Events matching ${describe} — ${events.length} shown (local index)`);
+  lines.push('');
+
+  if (events.length === 0) {
+    lines.push(`No events found for ${describe}.`);
+    return lines.join('\n');
+  }
+
+  const rows: string[][] = events.map((ev) => {
+    let markets: Array<Record<string, unknown>> = [];
+    try {
+      const parsed: unknown = ev.markets_json ? JSON.parse(ev.markets_json) : [];
+      if (Array.isArray(parsed)) markets = parsed as Array<Record<string, unknown>>;
+    } catch {
+      // A malformed row should cost its market count, not the whole table.
+    }
+    const open = markets.filter((m) => m.status === 'open' || m.status === 'active');
+    const volume = open.reduce((sum, m) => sum + (Number(m.volume_24h) || 0), 0);
+    return [
+      ev.event_ticker,
+      truncate(ev.title ?? '-', 44),
+      String(open.length),
+      fmtVol(volume),
+      ev.category ?? '-',
+    ];
+  });
+  lines.push(formatTable(['Event', 'Title', 'Mkts', '24h Vol', 'Category'], rows));
   return lines.join('\n');
 }
 

@@ -75,12 +75,30 @@ Type help for commands, or just ask a question.
 
 > search crypto
 
-  Ticker                  Title                          Last    Volume
-  KXBTC-26APR-B95000      Bitcoin above $95k by Apr 30   $0.58   12,841
-  KXBTC-26APR-B100000     Bitcoin above $100k by Apr 30  $0.31    8,203
-  KXETH-26APR-B2000       Ethereum above $2k by Apr 30   $0.72    5,419
+Events matching theme crypto — 3 shown
 
-3 markets found
+┌──────────────────────┬───────────────────────────────────────┬───────┬──────────┬──────────┬────────────┐
+│ Event                │ Title                                 │ Last* │ 24h Vol* │ Category │ Closes     │
+├──────────────────────┼───────────────────────────────────────┼───────┼──────────┼──────────┼────────────┤
+│ KXBTCD-26SEP1817     │ BTC price on Sep 18, 2026 at 5pm EDT? │ $0.09 │ 65.3k    │ Crypto   │ 2026-09-18 │
+│ KXBTC2026200-27JAN01 │ Will Bitcoin be above $200k by 2027?  │ $0.03 │ 92.6k    │ Crypto   │ 2027-01-01 │
+│ KXETHD-26SEP1817     │ ETH price on Sep 18, 2026 at 5pm EDT? │ $0.04 │ 9.1k     │ Crypto   │ 2026-09-18 │
+└──────────────────────┴───────────────────────────────────────┴───────┴──────────┴──────────┴────────────┘
+
+* of the event's best-matching market, not an event total.
+Drill into one event: search KXBTCD-26SEP1817
+
+> search KXBTCD-26SEP1817
+
+Markets in KXBTCD-26SEP1817 — 3 shown
+
+┌───────────┬──────────────────┬───────┬─────────┬────────────┐
+│ Contract  │ Strike           │ Last  │ 24h Vol │ Closes     │
+├───────────┼──────────────────┼───────┼─────────┼────────────┤
+│ T64999.99 │ $65,000 or above │ $0.97 │ 5.3k    │ 2026-09-18 │
+│ T69999.99 │ $70,000 or above │ $0.95 │ 7.4k    │ 2026-09-18 │
+│ T70999.99 │ $71,000 or above │ $0.94 │ 12.0k   │ 2026-09-18 │
+└───────────┴──────────────────┴───────┴─────────┴────────────┘
 
 > analyze KXBTC-26APR-B95000
 
@@ -116,7 +134,7 @@ Type help for commands, or just ask a question.
 
 | Command | Description |
 |---------|-------------|
-| `search [theme\|ticker\|query]` | Find markets by keyword or theme (Octagon-backed when key set) |
+| `search [theme\|query]` | Find **events** by theme or keyword (Octagon-backed when key set). `search <event_ticker>` drills into that event's markets; `search crypto:btc` narrows a theme |
 | `search edge [--min-edge N]` | Scan all markets by model edge (Octagon `markets-with-edge`) |
 | `similar <ticker\|"query">` | Related markets via Octagon — taxonomy walk from a ticker, keyword relevance from a query |
 | `clusters [--label X]` | Browse thematic clusters of the Kalshi universe |
@@ -195,9 +213,9 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--max-age <n>` | Reject predictions older than N days (backtest, default = `--days`) |
 | `--resolved` | Resolved markets only (backtest) |
 | `--unresolved` | Open markets only (backtest) |
-| `--category <cat>` | Filter by category (backtest, search edge) |
-| `--limit <n>` | Max results to show (search edge, default 20) |
-| `--min-volume <n>` | Min per-contract volume (from Octagon snapshot; falls back to Kalshi lifetime if missing). Backtest default 1. |
+| `--category <cat>` | Filter by category (backtest, search, search edge). On `search`, returns markets instead of events |
+| `--limit <n>` | Max results to show (search default 30, search edge default 20) |
+| `--min-volume <n>` | Backtest: min per-contract volume (from Octagon snapshot; falls back to Kalshi lifetime if missing), default 1. Search, similar, basket build: floor on 24h volume; on `search`, returns markets instead of events |
 | `--min-price <n>` | Min contract price, 0-100 scale (backtest, default 5) |
 | `--max-price <n>` | Max contract price, 0-100 scale (backtest, default 95) |
 | `--export <path>` | Export per-market CSV (backtest) |
@@ -205,7 +223,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--behavioral` | Use behavioral clustering (clusters, peers) |
 | `--ranked` | Rank clusters by historical basket return (clusters) |
 | `--label <substr,...>` | Filter by cluster label substring (clusters, basket build) |
-| `--close-before <iso>` | Only markets closing before this timestamp |
+| `--close-before <iso>` | Only markets closing before this timestamp (search, similar, basket build). On `search`, returns markets instead of events |
 | `--window-days <n>` | Correlation lookback (correlate; basket build) |
 | `--correlation-interval <1h\|1d>` | Override candle bin size for correlate |
 | `--timeframe <1w\|1m\|3m\|6m\|1y>` | Window/bin size for basket commands |
@@ -217,7 +235,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--max-corr <-1..1>` | Pairwise correlation cap (basket build) |
 | `--min-return <n>` | Minimum total_return for clusters --ranked |
 | `--series <ticker>` | Filter to a Kalshi series (search, similar, basket) |
-| `--sort-by <key>` | Sort key for search edge: edge_pp \| expected_return \| total_volume \| model_probability |
+| `--sort-by <key>` | Search: volume_24h \| close_time \| last_price (returns markets instead of events). Search edge: edge_pp \| expected_return \| total_volume \| model_probability |
 | `--probs <csv>` | Per-leg probabilities, e.g. `KX-A:0.62,KX-B:0.55` |
 | `--tickers <csv>` | Comma-separated tickers (correlate, basket backtest/candles) |
 | `-q "text"` | Free-text anchor for similar / basket build |
@@ -235,7 +253,11 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 The `search`, `similar`, `clusters`, `peers`, `correlate`, and `basket` commands turn the whole Kalshi universe into a queryable database. When `OCTAGON_API_KEY` is set the bot routes searches through Octagon's typed endpoints — taxonomy-ranked related markets, nightly k-means clusters (thematic + behavioral), Pearson correlation matrices, and one-call diversified basket construction with cluster caps and pairwise-correlation gates. Without a key, `search` and `search edge` fall back to the local SQLite cache.
 
 ```bash
-# Free-text + structured search (semantic full-text + filters)
+# Events matching a theme or free text, then one event's markets
+kalshi search crypto
+kalshi search KXBTCD-26SEP1817
+
+# Market-level filters search markets instead of events
 kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
 
 # Edge ranking from Octagon's latest run (server-side, no local pre-fetch)
@@ -467,8 +489,9 @@ Errors return `"ok": false` with an `error` object containing `code` and `messag
 ### Example Orchestration Flow
 
 ```bash
-# 1. Find markets
-MARKETS=$(kalshi search crypto --json | jq '.data')
+# 1. Find an event, then its markets
+EVENT=$(kalshi search crypto --json | jq -r '.data.data[0].native_event_ticker')
+MARKETS=$(kalshi search "$EVENT" --json | jq '.data.data')
 
 # 2. Analyze top pick
 ANALYSIS=$(kalshi analyze KXBTC-26APR-B95000 --json)

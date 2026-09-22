@@ -24,8 +24,8 @@ import {
   WorkingIndicatorComponent,
   createApiKeyConfirmSelector,
   createBrowseActionSelector,
+  createBrowseEventSelector,
   createBrowseMarketSelector,
-  updateBrowseMarketSelector,
   createModelSelector,
   createProviderSelector,
 } from './components/index.js';
@@ -37,6 +37,7 @@ import { ensureIndex, onIndexProgress, getRefreshPromise } from './tools/kalshi/
 import { callKalshiApi } from './tools/kalshi/api.js';
 import type { KalshiMarket } from './tools/kalshi/types.js';
 import { SetupWizardController } from './setup/wizard.js';
+import { allThemeIds } from './scan/theme-registry.js';
 import { trackEvent } from './utils/telemetry.js';
 
 function truncateAtWord(str: string, maxLength: number): string {
@@ -202,7 +203,7 @@ export async function runCli(options?: { forceSetup?: boolean }) {
   });
 
   // Slash command autocomplete — start with top-level themes, load subcategories in background
-  const baseThemes = ['top50', 'climate', 'companies', 'crypto', 'economics', 'elections', 'entertainment', 'financials', 'health', 'mentions', 'politics', 'science', 'social', 'sports', 'transportation', 'world'];
+  const baseThemes = allThemeIds();
   let allThemes = baseThemes.map((t) => ({ value: t, label: t }));
 
   // Pre-warm the event index on startup (non-blocking, only if credentials exist)
@@ -233,9 +234,12 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     void (async () => {
       try {
         const { fetchSubcategories, CATEGORY_MAP } = await import('./scan/theme-resolver.js');
+        // A theme can span several upstream labels, so invert the array form.
+        // Aliases reuse their theme's labels and come after it, so the first
+        // mapping wins and autocomplete offers politics:…, never world:….
         const labelToKey: Record<string, string> = {};
-        for (const [key, label] of Object.entries(CATEGORY_MAP)) {
-          labelToKey[label] = key;
+        for (const [key, labels] of Object.entries(CATEGORY_MAP)) {
+          for (const label of labels) labelToKey[label] ??= key;
         }
         const subcats = await fetchSubcategories();
         const subEntries: Array<{ value: string; label: string }> = [];
@@ -869,21 +873,21 @@ export async function runCli(options?: { forceSetup?: boolean }) {
     }
 
     if (browseState.appState === 'event_list') {
-      // If the cached selector still matches, update labels in-place (no flicker).
-      // The in-place update only refreshes labels, but the selector also renders
-      // the error and progress lines, and either can change while the theme and
-      // event count stay put, so they are part of the key.
+      // Event rows carry no hydrated model probabilities, so the cached
+      // selector's labels cannot go stale — reuse it as-is to avoid flicker.
+      // Its error and progress lines can, though: the selector renders both, and
+      // either can change while the theme and event count stay put, so they are
+      // part of the key.
       const browseStatus = `${browseState.lastError ?? ''}\u0000${browseState.progressMessage ?? ''}`;
       if (cachedBrowseSelector && cachedBrowseTheme === browseState.theme
           && cachedBrowseEventCount === browseState.events.length
           && cachedBrowseStatus === browseStatus) {
-        updateBrowseMarketSelector(cachedBrowseSelector, browseState.events);
         tui.requestRender();
         return;
       }
-      const selector = createBrowseMarketSelector(
+      const selector = createBrowseEventSelector(
         browseState.events,
-        (eventTicker, marketTicker) => browseController.selectMarket(eventTicker, marketTicker),
+        (eventTicker) => browseController.selectEvent(eventTicker),
         () => browseController.cancelBrowse(),
         browseState.lastError,
         browseState.progressMessage,
@@ -897,7 +901,27 @@ export async function runCli(options?: { forceSetup?: boolean }) {
         `Browse: ${browseState.theme}`,
         `${browseState.events.length} events, ${browseState.events.reduce((n, e) => n + e.markets.length, 0)} markets`,
         selector,
-        'Enter to select · esc to exit',
+        'Enter to open an event · esc to exit',
+        focusTarget,
+      );
+      return;
+    }
+
+    if (browseState.appState === 'market_list' && browseState.selectedEvent) {
+      const event = browseState.selectedEvent;
+      const selector = createBrowseMarketSelector(
+        [event],
+        (eventTicker, marketTicker) => browseController.selectMarket(eventTicker, marketTicker),
+        () => browseController.cancelBrowse(),
+        browseState.lastError,
+        browseState.progressMessage,
+      );
+      const focusTarget = (selector as any)._browseList;
+      renderScreenView(
+        event.eventTicker,
+        `${event.title} — ${event.markets.length} market${event.markets.length !== 1 ? 's' : ''}`,
+        selector,
+        'Enter to select · esc to go back',
         focusTarget,
       );
       return;

@@ -13,6 +13,7 @@
  */
 
 import { fetchWithDeadline } from '../utils/http.js';
+import type { MetaCategory } from './theme-registry.js';
 
 const KALSHI_API_BASE = 'https://api.octagonai.co/v1/predictions/kalshi';
 const TIMEOUT_MS = 60_000;
@@ -34,6 +35,8 @@ async function kalshiApi<T>(
   opts?: {
     params?: object;
     body?: unknown;
+    /** Override the base URL — used for the venue-agnostic routes. */
+    base?: string;
   },
 ): Promise<T> {
   const apiKey = process.env.OCTAGON_API_KEY;
@@ -41,7 +44,7 @@ async function kalshiApi<T>(
     throw new Error('OCTAGON_API_KEY not set. Get one at https://app.octagonai.co');
   }
 
-  const url = `${KALSHI_API_BASE}${path}${method === 'GET' ? buildQuery(opts?.params) : ''}`;
+  const url = `${opts?.base ?? KALSHI_API_BASE}${path}${method === 'GET' ? buildQuery(opts?.params) : ''}`;
 
   const resp = await fetchWithDeadline(url, {
     method,
@@ -282,6 +285,146 @@ export interface SearchMarketsParams {
 
 export function searchKalshiMarkets(params: SearchMarketsParams): Promise<PagedResult<KalshiMarketRow>> {
   return kalshiApi<PagedResult<KalshiMarketRow>>('GET', '/markets', { params });
+}
+
+// ─── Venue-agnostic event search ────────────────────────────────────────────
+
+/** Venue-agnostic base. The same route backs the Polymarket CLI, via `venues`. */
+const EVENTS_API_BASE = 'https://api.octagonai.co/v1/predictions/markets';
+const OCTAGON_VENUE = 'kalshi';
+
+/**
+ * Keys this endpoint understands. Anything else must be dropped rather than
+ * forwarded: an unrecognised parameter makes it return ZERO ROWS silently
+ * instead of erroring, which is indistinguishable from "no results".
+ */
+const EVENT_SEARCH_KEYS = ['q', 'meta_category', 'report', 'limit', 'cursor'] as const;
+
+/** One row per event, represented by its best-matching market. */
+export interface EventSearchRow {
+  /** Venue-prefixed. Prefer `native_event_ticker` for display and drill-down. */
+  event_ticker: string;
+  market_ticker?: string | null;
+  title?: string | null;
+  sub_title?: string | null;
+  category?: string | null;
+  venue?: string | null;
+  native_ticker?: string | null;
+  native_event_ticker?: string | null;
+  /** The representative market's last price — not an event aggregate. */
+  last_price?: number | null;
+  /** The representative market's 24h volume — not an event aggregate. */
+  volume_24h?: number | null;
+  event_status?: string | null;
+  close_time?: string | null;
+  has_report?: boolean;
+}
+
+export interface SearchEventsParams {
+  q?: string;
+  /**
+   * Typed as MetaCategory, not string, on purpose: the filter is
+   * case-sensitive and a wrong case returns zero rows rather than an error, so
+   * the value must come from the theme registry. This makes a lowercase
+   * literal a compile error.
+   */
+  meta_category?: MetaCategory;
+  report?: 'all' | 'ready' | 'none';
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Search events across the Kalshi universe.
+ *
+ * Note the deliberate omissions: this route accepts no `sort_by`,
+ * `min_volume_24h`, `close_before` or `category`. Callers needing those must
+ * use searchKalshiMarkets instead — passing them here would silently empty the
+ * result set. Ordering is server-defined but stable across repeated requests.
+ */
+export function searchOctagonEvents(params: SearchEventsParams): Promise<PagedResult<EventSearchRow>> {
+  const safe: Record<string, unknown> = { venues: OCTAGON_VENUE };
+  for (const key of EVENT_SEARCH_KEYS) {
+    const value = (params as Record<string, unknown>)[key];
+    if (value !== undefined) safe[key] = value;
+  }
+  return kalshiApi<PagedResult<EventSearchRow>>('GET', '/events/search', {
+    params: safe,
+    base: EVENTS_API_BASE,
+  });
+}
+
+/**
+ * Keys the venue-agnostic markets route understands. Same hazard as the events
+ * route: an unrecognised parameter silently empties the result set.
+ */
+const MARKET_SEARCH_KEYS = [
+  'q', 'category', 'series_ticker', 'series_prefix', 'event_ticker',
+  'close_before', 'min_volume_24h', 'sort_by', 'boost_category', 'limit', 'cursor',
+] as const;
+
+/** One market row from the venue-agnostic markets route. */
+export interface MarketSearchRow {
+  market_ticker: string;
+  native_ticker?: string | null;
+  venue?: string | null;
+  /** Venue-prefixed. This is the form `event_ticker` filtering expects. */
+  event_ticker: string;
+  series_ticker?: string | null;
+  title: string;
+  subtitle?: string | null;
+  /** The per-contract label — the strike on a Kalshi ladder. */
+  yes_subtitle?: string | null;
+  no_subtitle?: string | null;
+  status?: string | null;
+  close_time?: string | null;
+  last_price?: number | null;
+  yes_bid?: number | null;
+  yes_ask?: number | null;
+  volume?: number | null;
+  volume_24h?: number | null;
+  category?: string | null;
+  event_name?: string | null;
+}
+
+export interface SearchOctagonMarketsParams {
+  q?: string;
+  category?: string;
+  series_ticker?: string;
+  series_prefix?: string;
+  /**
+   * The venue-prefixed identifier from `EventSearchRow.event_ticker`, not the
+   * native one. Kalshi's native ticker is already prefix-free so the two
+   * coincide; Polymarket's is `polymarket__<slug>`, and passing the native slug
+   * there returns zero rows.
+   */
+  event_ticker?: string;
+  close_before?: string;
+  min_volume_24h?: number;
+  sort_by?: 'volume_24h' | 'close_time' | 'last_price';
+  boost_category?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+/**
+ * Search markets across venues. Unlike `searchKalshiMarkets` this is the
+ * venue-agnostic route, so both CLIs answer from the same corpus — and unlike
+ * the events route it accepts the full filter set, which is what lets
+ * `--min-volume` and friends keep working.
+ */
+export function searchOctagonMarkets(
+  params: SearchOctagonMarketsParams,
+): Promise<PagedResult<MarketSearchRow>> {
+  const safe: Record<string, unknown> = { venues: OCTAGON_VENUE };
+  for (const key of MARKET_SEARCH_KEYS) {
+    const value = (params as Record<string, unknown>)[key];
+    if (value !== undefined) safe[key] = value;
+  }
+  return kalshiApi<PagedResult<MarketSearchRow>>('GET', '/search', {
+    params: safe,
+    base: EVENTS_API_BASE,
+  });
 }
 
 export interface SimilarParams {

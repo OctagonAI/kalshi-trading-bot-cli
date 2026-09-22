@@ -12,7 +12,9 @@ function buildTopics(ctx: HelpContext): Record<string, string> {
   return {
     search: `**${p}search** — Discovery (Octagon-powered when OCTAGON_API_KEY is set)
 
-${p}search [theme|ticker|query]  Full-text market search (server-side when key is set, else local index)
+${p}search [theme|query]         Find EVENTS matching a theme or free text
+${p}search <event_ticker>        Drill into one event: list its markets
+${p}search <theme>:<subtheme>    Narrow a theme, e.g. crypto:btc, sports:baseball
 ${p}search themes                List all available themes and subcategories
 ${p}search edge                  Edge ranking from latest Octagon run (server-side) or local cache
 ${p}search edge --min-edge 30    Markets with ≥30pp edge
@@ -31,8 +33,16 @@ Search flags (server-side path):
   --aggregate-by series Roll up results by series (calls series rollup)
   --active-only         Drop non-active markets (defensive; the live universe is active by default)
 
+Results are events by default — markets live inside an event, so pass an event
+ticker to see them. A theme resolves to Octagon's cross-venue category rather
+than matching the word itself. Any market-level filter (--min-volume,
+--close-before, --sort-by, --category, --series) searches markets instead,
+since the event route does not support them.
+
 Examples:
-  ${p}search crypto
+  ${p}search crypto                  events in the Crypto category
+  ${p}search crypto:btc              narrowed to BTC
+  ${p}search KXBTCD-33MAY2100        that event's markets
   ${p}search "bitcoin price" --min-volume 10000
   ${p}search edge --min-edge 30 --category crypto
 
@@ -555,13 +565,14 @@ function buildOverview(ctx: HelpContext): string {
     return `**Kalshi Trading Bot CLI — CLI Commands**
 
 Quick start:
-  kalshi search crypto          Find markets by keyword or theme
+  kalshi search crypto          Find events by keyword or theme
   kalshi analyze <ticker>       Deep analysis + trade recommendation
   kalshi watch --theme crypto   Continuous scan across a theme
 
 Discovery:
-  search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  search --sort-by volume_24h   Top-N by liquidity
+  search [theme|query]          Find events (Octagon when key set, else local)
+  search <event_ticker>         List that event's markets
+  search --sort-by volume_24h   Top-N markets by liquidity
   search --aggregate-by series  Roll up results to series level
   search themes                 (Legacy) Kalshi category labels
   search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
@@ -644,13 +655,14 @@ Run "kalshi help <command>" for detailed usage.`;
   return `**Kalshi Trading Bot CLI — Commands**
 
 Quick start:
-  /search crypto          Find markets by keyword or theme
+  /search crypto          Find events by keyword or theme
   /analyze <ticker>       Deep analysis + trade recommendation
   /watch --theme crypto   Continuous scan across a theme
 
 Discovery:
-  /search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  /search --sort-by volume_24h   Top-N by liquidity
+  /search [theme|query]          Find events (Octagon when key set, else local)
+  /search <event_ticker>         List that event's markets
+  /search --sort-by volume_24h   Top-N markets by liquidity
   /search --aggregate-by series  Roll up results to series level
   /search themes                 (Legacy) Kalshi category labels
   /search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)

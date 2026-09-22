@@ -12,12 +12,38 @@ function fmtPct(val: number | null): string {
   return `${(val * 100).toFixed(1)}%`;
 }
 
+/**
+ * A contract's own identity: the market ticker minus its event prefix.
+ * `KXBTCD-33APR0610-T59599.99` → `T59599.99`.
+ *
+ * Kept local rather than imported from the command layer — this is three lines,
+ * and browse-list.ts is a TUI component that otherwise pulls in nothing from
+ * `commands/`.
+ */
+function contractOf(marketTicker: string, eventTicker: string): string {
+  const prefix = `${eventTicker}-`;
+  return marketTicker.startsWith(prefix) ? marketTicker.slice(prefix.length) : marketTicker;
+}
+
+/**
+ * Within one event, show whichever of label/title actually varies.
+ *
+ * A Kalshi strike ladder carries one title on all 188 markets and differs only
+ * by label, so the old Title column showed the same string on every row while
+ * the 26-char ticker was cut to 19 — losing the strike digits too.
+ */
+function describeMarket(m: BrowseMarketRow, labelsVary: boolean): string {
+  if (labelsVary && m.label) return m.label;
+  return m.title;
+}
+
 function buildMarketItems(events: BrowseEventRow[]): SelectItem[] {
   const items: SelectItem[] = [];
   for (const ev of events) {
+    const labelsVary = new Set(ev.markets.map((m) => m.label ?? '')).size > 1;
     for (const m of ev.markets) {
-      const ticker = pad(m.ticker, 20);
-      const title = pad(m.title, 48);
+      const contract = pad(contractOf(m.ticker, ev.eventTicker), 14);
+      const what = pad(describeMarket(m, labelsVary), 40);
       const mktPct = pad(fmtPct(m.marketProb), 7);
       const isPending = ev.pending === true;
       const modelPct = pad(isPending && m.modelProb === null ? '...' : fmtPct(m.modelProb), 7);
@@ -26,7 +52,7 @@ function buildMarketItems(events: BrowseEventRow[]): SelectItem[] {
 
       items.push({
         value: JSON.stringify({ eventTicker: ev.eventTicker, marketTicker: m.ticker }),
-        label: `${ticker} ${title} ${mktPct} ${modelPct} ${edgeStr} ${conf}`,
+        label: `${contract} ${what} ${mktPct} ${modelPct} ${edgeStr} ${conf}`,
       });
     }
   }
@@ -74,7 +100,7 @@ export function createBrowseMarketSelector(
   }
 
   // Header row
-  const header = `${pad('Ticker', 20)} ${pad('Title', 48)} ${pad('Mkt %', 7)} ${pad('Model%', 7)} ${pad('Edge', 7)} ${pad('Conf', 8)}`;
+  const header = `${pad('Contract', 14)} ${pad('Strike / Title', 40)} ${pad('Mkt %', 7)} ${pad('Model%', 7)} ${pad('Edge', 7)} ${pad('Conf', 8)}`;
   container.addChild(new Text(theme.muted(header), 0, 0));
 
   if (items.length === 0) {
@@ -98,6 +124,52 @@ export function createBrowseMarketSelector(
 
   // Store list reference for focus
   (container as any)._browseList = list;
+
+  return container;
+}
+
+/**
+ * Event-level list: one row per event, not one per market.
+ *
+ * The list used to flatten every event's markets into sibling rows, so an event
+ * with 40 outcomes filled the screen and there was no way to open it. Rows
+ * arrive already sorted by total market volume.
+ */
+export function createBrowseEventSelector(
+  events: BrowseEventRow[],
+  onSelect: (eventTicker: string) => void,
+  onCancel: () => void,
+  errorMessage?: string | null,
+  progressMessage?: string | null,
+): Container {
+  const container = new Container();
+
+  if (progressMessage) {
+    container.addChild(new Text(theme.muted(progressMessage), 0, 0));
+  }
+  if (errorMessage) {
+    container.addChild(new Text(theme.bold(theme.warning(errorMessage)), 0, 0));
+  }
+
+  const header = `${pad('Event', 24)} ${pad('Title', 50)} ${pad('Mkts', 5)} ${pad('Category', 18)}`;
+  container.addChild(new Text(theme.muted(header), 0, 0));
+
+  if (events.length === 0) {
+    container.addChild(new Text(theme.muted('No events found.'), 0, 0));
+    container.addChild(new Text(theme.muted('esc to go back'), 0, 0));
+    return container;
+  }
+
+  const items: SelectItem[] = events.map((ev) => ({
+    value: ev.eventTicker,
+    label: `${pad(ev.eventTicker, 24)} ${pad(ev.title, 50)} ${pad(String(ev.markets.length), 5)} ${pad(ev.category || '-', 18)}`,
+  }));
+
+  const list = new VimSelectList(items, Math.min(items.length, 20), selectListTheme);
+  list.onSelect = (item) => onSelect(item.value);
+  list.onCancel = () => onCancel();
+  container.addChild(list);
+  Object.assign(container, { _browseList: list });
 
   return container;
 }

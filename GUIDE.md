@@ -91,9 +91,10 @@ Quick commands that bypass the AI agent and call the Kalshi or Octagon API direc
 | `/orders` | Resting (open) orders | `/orders` |
 | `/markets [series]` | Browse markets, optionally filter by series ticker | `/markets KXBTC` |
 | `/market <ticker>` | Market detail + top-of-book orderbook | `/market KXBTC-26MAR-B80000` |
-| `/search <query>` | Full-text market search (Octagon when key set) | `/search "bitcoin price" --min-volume 10000` |
+| `/search [theme\|query]` | Find events by theme or keyword (Octagon when key set) | `/search crypto` |
+| `/search <event_ticker>` | List one event's markets | `/search KXBTCD-26SEP1817` |
 | `/search edge` | Edge ranking from Octagon's latest run | `/search edge --min-edge 5 --sort-by total_volume` |
-| `/similar <ticker\|"text">` | Semantic neighbors via embeddings | `/similar KXBTCD-26DEC31-T100000 --top-k 20` |
+| `/similar <ticker\|"text">` | Related markets (taxonomy walk / keyword relevance) | `/similar KXBTCD-26DEC31-T100000 --top-k 20` |
 | `/clusters [--label X]` | Browse thematic clusters | `/clusters --label fed` |
 | `/clusters <id>` | List markets inside a cluster | `/clusters 42` |
 | `/clusters --behavioral` | Behavioral clusters by 30-day return vectors | `/clusters --behavioral` |
@@ -130,12 +131,19 @@ Quick commands that bypass the AI agent and call the Kalshi or Octagon API direc
 
 ## Discovery & Portfolio (Octagon-powered)
 
-With `OCTAGON_API_KEY` set, the bot routes searches through Octagon's typed Kalshi endpoints. This unlocks semantic similarity, thematic and behavioral clustering, pairwise correlation matrices, and one-call diversified basket construction. Without a key the bot falls back to the local SQLite index for `/search` and `/search edge`; the other commands require the key.
+With `OCTAGON_API_KEY` set, the bot routes searches through Octagon's typed Kalshi endpoints. This unlocks related-market discovery, thematic and behavioral clustering, pairwise correlation matrices, and one-call diversified basket construction. Without a key the bot falls back to the local SQLite index for `/search` and `/search edge`; the other commands require the key.
 
 ### `/search` and `/search edge`
 
+Results are events: a theme selects its category, and `theme:subtheme` narrows it. Pass an event ticker to list that event's markets. Any market-level filter (`--category`, `--series`, `--min-volume`, `--close-before`, `--sort-by`) searches markets instead.
+
 ```bash
-# Server-side full-text + structured filter
+# Events, then one event's markets
+kalshi search crypto
+kalshi search crypto:btc
+kalshi search KXBTCD-26SEP1817
+
+# Market-level filters search markets instead of events
 kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
 
 # Edge ranking from Octagon's latest events run
@@ -147,15 +155,15 @@ Flags (server-side path): `--category`, `--series <ticker>`, `--min-volume <n>`,
 
 ### `/similar`
 
-Catches semantic matches keyword search misses ("Will Bitcoin pierce six figures" ↔ "BTC > $100k").
+From a ticker, walks the taxonomy: same event, then series, then category, each by 24h volume. From `-q` text, ranks by keyword relevance.
 
 ```bash
-kalshi similar KXBTCD-26DEC31-T100000 --top-k 25                # anchor by ticker (no embedding call)
+kalshi similar KXBTCD-26DEC31-T100000 --top-k 25                # anchor by ticker
 kalshi similar -q "Will Bitcoin pierce six figures" --category crypto
 kalshi similar -q "ETH 2.0 staking" --category crypto --min-volume 10000 --close-before 2026-08-19T00:00:00Z
 ```
 
-Lower `distance` = closer cosine similarity.
+`distance` is the rank order, with smaller = closer.
 
 ### `/clusters`
 
