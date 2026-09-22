@@ -199,8 +199,7 @@ Flags:
 
 Ranking: a ticker anchor walks the taxonomy — same event, then series, then
 category, each ordered by 24h volume. A -q anchor ranks by keyword relevance.
-The "distance" column is that rank order (row number / 1000), not a similarity
-score: Octagon removed the embedding layer.`,
+The "distance" column is that rank order with smaller = closer.`,
 
     clusters: `**${p}clusters** — Browse Octagon clusters (thematic + behavioral)
 

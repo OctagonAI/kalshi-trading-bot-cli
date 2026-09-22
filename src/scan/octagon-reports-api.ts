@@ -91,8 +91,7 @@ function baseUrl(): string {
   return process.env.OCTAGON_BASE_URL ?? REPORTS_API_BASE;
 }
 
-async function toApiError(resp: Response): Promise<OctagonReportsApiError> {
-  const body = await resp.text().catch(() => '');
+function toApiError(status: number, body: string): OctagonReportsApiError {
   let code: string | null = null;
   let message = body.slice(0, 300);
   try {
@@ -102,7 +101,7 @@ async function toApiError(resp: Response): Promise<OctagonReportsApiError> {
   } catch {
     // non-JSON body — keep the raw slice
   }
-  return new OctagonReportsApiError(resp.status, code, `Octagon reports API ${resp.status}${code ? ` (${code})` : ''}: ${message}`);
+  return new OctagonReportsApiError(status, code, `Octagon reports API ${status}${code ? ` (${code})` : ''}: ${message}`);
 }
 
 async function requestJson<T>(
@@ -120,12 +119,18 @@ async function requestJson<T>(
       logger.info(`[reports-api] retrying in ${delay / 1000}s (attempt ${attempt + 1}/${maxRetries + 1})`);
       await new Promise((r) => setTimeout(r, delay));
     }
+    // The deadline stays armed through the body read, so read the body inside
+    // this try too. An abort there has to become the same "timed out" error:
+    // GETs retry on it, and isAmbiguousGenerationFailure only recognises a POST
+    // that may have started a run by that message.
     let resp: Response;
+    let body: string;
     try {
       resp = await fetchWithDeadline(`${baseUrl()}${path}`, {
         method,
         headers: { Authorization: `Bearer ${apiKey}` },
       }, REQUEST_TIMEOUT_MS);
+      body = await resp.text();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         lastError = new Error(`Octagon reports API timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${method} ${path})`);
@@ -135,13 +140,13 @@ async function requestJson<T>(
       throw err;
     }
 
-    if (resp.ok) return (await resp.json()) as T;
+    if (resp.ok) return JSON.parse(body) as T;
 
     if (GET_RETRY_STATUS.includes(resp.status) && attempt < maxRetries) {
-      lastError = await toApiError(resp);
+      lastError = toApiError(resp.status, body);
       continue;
     }
-    throw await toApiError(resp);
+    throw toApiError(resp.status, body);
   }
   throw lastError ?? new Error('Octagon reports API request failed');
 }

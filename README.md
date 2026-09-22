@@ -187,6 +187,7 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 | `--performance` | Include win rate, Sharpe, Brier scores (portfolio) |
 | `--dry-run` | Scan without persisting edges (watch) |
 | `--verbose` | Verbose output |
+| `--market <market>` | Single-market detail card instead of the event view (trust) |
 | `--min-edge <n>` | Minimum edge threshold in pp (backtest default 0.5) |
 | `--interval <min>` | Scan interval in minutes (watch) |
 | `--live` | Force 15m scan interval (watch) |
