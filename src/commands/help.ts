@@ -565,13 +565,14 @@ function buildOverview(ctx: HelpContext): string {
     return `**Kalshi Trading Bot CLI — CLI Commands**
 
 Quick start:
-  kalshi search crypto          Find markets by keyword or theme
+  kalshi search crypto          Find events by keyword or theme
   kalshi analyze <ticker>       Deep analysis + trade recommendation
   kalshi watch --theme crypto   Continuous scan across a theme
 
 Discovery:
-  search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  search --sort-by volume_24h   Top-N by liquidity
+  search [theme|query]          Find events (Octagon when key set, else local)
+  search <event_ticker>         List that event's markets
+  search --sort-by volume_24h   Top-N markets by liquidity
   search --aggregate-by series  Roll up results to series level
   search themes                 (Legacy) Kalshi category labels
   search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)
@@ -654,13 +655,14 @@ Run "kalshi help <command>" for detailed usage.`;
   return `**Kalshi Trading Bot CLI — Commands**
 
 Quick start:
-  /search crypto          Find markets by keyword or theme
+  /search crypto          Find events by keyword or theme
   /analyze <ticker>       Deep analysis + trade recommendation
   /watch --theme crypto   Continuous scan across a theme
 
 Discovery:
-  /search [theme|ticker|query]   Find markets (Octagon when key set, else local)
-  /search --sort-by volume_24h   Top-N by liquidity
+  /search [theme|query]          Find events (Octagon when key set, else local)
+  /search <event_ticker>         List that event's markets
+  /search --sort-by volume_24h   Top-N markets by liquidity
   /search --aggregate-by series  Roll up results to series level
   /search themes                 (Legacy) Kalshi category labels
   /search edge [--min-edge N]    Edge ranking (Octagon when key set, else local)

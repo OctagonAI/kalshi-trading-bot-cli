@@ -253,7 +253,11 @@ kalshi hypothesis resolve 3 refuted "only one cut happened"
 The `search`, `similar`, `clusters`, `peers`, `correlate`, and `basket` commands turn the whole Kalshi universe into a queryable database. When `OCTAGON_API_KEY` is set the bot routes searches through Octagon's typed endpoints — taxonomy-ranked related markets, nightly k-means clusters (thematic + behavioral), Pearson correlation matrices, and one-call diversified basket construction with cluster caps and pairwise-correlation gates. Without a key, `search` and `search edge` fall back to the local SQLite cache.
 
 ```bash
-# Free-text + structured search (semantic full-text + filters)
+# Events matching a theme or free text, then one event's markets
+kalshi search crypto
+kalshi search KXBTCD-26SEP1817
+
+# Market-level filters search markets instead of events
 kalshi search "bitcoin price" --category crypto --min-volume 10000 --limit 20
 
 # Edge ranking from Octagon's latest run (server-side, no local pre-fetch)
@@ -485,8 +489,9 @@ Errors return `"ok": false` with an `error` object containing `code` and `messag
 ### Example Orchestration Flow
 
 ```bash
-# 1. Find markets
-MARKETS=$(kalshi search crypto --json | jq '.data')
+# 1. Find an event, then its markets
+EVENT=$(kalshi search crypto --json | jq -r '.data.data[0].native_event_ticker')
+MARKETS=$(kalshi search "$EVENT" --json | jq '.data.data')
 
 # 2. Analyze top pick
 ANALYSIS=$(kalshi analyze KXBTC-26APR-B95000 --json)
