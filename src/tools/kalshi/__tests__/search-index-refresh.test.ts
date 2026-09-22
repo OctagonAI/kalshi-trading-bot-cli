@@ -53,6 +53,14 @@ describe('refreshIndex', () => {
     expect(getLastRefresh(db)).not.toBeNull();
   });
 
+  test('a walk cut off at the page cap keeps the previous refresh time', async () => {
+    // Advancing it would let the next incremental pass start after events the
+    // truncated walk never reached.
+    setLastRefresh(db, 1_000);
+    alwaysMore = true;
+    await forceRefreshIndex();
+    expect(getLastRefresh(db)).toBe(1_000);
+  });
 
   test('a series whose tags were removed loses its stale tags', async () => {
     seriesTags = ['Bitcoin'];

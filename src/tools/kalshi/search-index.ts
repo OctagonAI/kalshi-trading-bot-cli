@@ -233,7 +233,11 @@ async function refreshIndex(force = false): Promise<void> {
       })();
     }
 
-    setLastRefresh(db, Date.now());
+    // A truncated walk keeps the previous stamp, so the next incremental pass
+    // starts early enough to cover what this one never reached (a truncated
+    // first build has no stamp, and simply rebuilds again). The page cap sits
+    // well above the ~64 pages the full universe takes, so this can't loop.
+    if (!truncated) setLastRefresh(db, Date.now());
 
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
     logger.info(
