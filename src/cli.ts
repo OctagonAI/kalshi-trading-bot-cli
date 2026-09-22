@@ -235,9 +235,11 @@ export async function runCli(options?: { forceSetup?: boolean }) {
       try {
         const { fetchSubcategories, CATEGORY_MAP } = await import('./scan/theme-resolver.js');
         // A theme can span several upstream labels, so invert the array form.
+        // Aliases reuse their theme's labels and come after it, so the first
+        // mapping wins and autocomplete offers politics:…, never world:….
         const labelToKey: Record<string, string> = {};
         for (const [key, labels] of Object.entries(CATEGORY_MAP)) {
-          for (const label of labels) labelToKey[label] = key;
+          for (const label of labels) labelToKey[label] ??= key;
         }
         const subcats = await fetchSubcategories();
         const subEntries: Array<{ value: string; label: string }> = [];
