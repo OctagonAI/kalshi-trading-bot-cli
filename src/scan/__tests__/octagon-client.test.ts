@@ -265,6 +265,25 @@ describe('OctagonClient', () => {
       expect(report.marketProb).toBeCloseTo(0.37, 4);
     });
 
+    test('reads the Reports API top-level outcome_probabilities_json (pinned version)', () => {
+      const client = new OctagonClient(makeInvoker(''), db, audit);
+      const json = JSON.stringify({
+        event_ticker: 'KXPRESNOMR-28',
+        name: 'Republican nominee 2028',
+        versions: [{ run_id: 'r1', model_probability: 1.6, market_probability: 1.3 }],
+        markdown_report: '# Republican nominee 2028',
+        outcome_probabilities_json: JSON.stringify([
+          { market_ticker: 'KXPRESNOMR-28-TMAS', model_probability: 1.6, market_probability: 1.3 },
+          { market_ticker: 'KXPRESNOMR-28-JDV', model_probability: 37.69, market_probability: 37.0 },
+        ]),
+      });
+
+      const report = client.parseReport(json, 'KXPRESNOMR-28-JDV', 'KXPRESNOMR-28', 'cache');
+      expect(report.modelProb).toBeCloseTo(0.3769, 4);
+      expect(report.marketProb).toBeCloseTo(0.37, 4);
+      expect(report.contractSnapshot).toBe(JSON.parse(json).outcome_probabilities_json);
+    });
+
     test('handles outcome_probabilities_json as array (not string) with case-insensitive ticker match', () => {
       const client = new OctagonClient(makeInvoker(''), db, audit);
       const json = JSON.stringify({
@@ -282,6 +301,8 @@ describe('OctagonClient', () => {
       const report = client.parseReport(json, 'kxpresnomr-28-jdv', 'KXPRESNOMR-28', 'cache');
       expect(report.modelProb).toBeCloseTo(0.3769, 4);
       expect(report.marketProb).toBeCloseTo(0.37, 4);
+      // Stored as JSON text, not String(array) ("[object Object],…").
+      expect(JSON.parse(report.contractSnapshot)).toEqual(JSON.parse(json).versions[0].outcome_probabilities_json);
     });
 
     test('falls back to event-level probability when ticker not in outcome_probabilities_json', () => {

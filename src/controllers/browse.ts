@@ -193,12 +193,12 @@ export function formatRawReport(raw: string, ticker: string): string {
         lines.push(`  • ${title}${s.url ?? JSON.stringify(s)}`);
       }
     }
-    if (source.outcome_probabilities_json) {
+    // The Reports API returns the pinned version's rows at the top level; older envelopes put them on versions[0].
+    const outcomeJson = parsed.outcome_probabilities_json ?? source.outcome_probabilities_json;
+    if (outcomeJson) {
       lines.push('');
       lines.push('Outcome Probabilities:');
-      const outcomes = typeof source.outcome_probabilities_json === 'string'
-        ? JSON.parse(source.outcome_probabilities_json)
-        : source.outcome_probabilities_json;
+      const outcomes = typeof outcomeJson === 'string' ? JSON.parse(outcomeJson) : outcomeJson;
       if (Array.isArray(outcomes)) {
         for (const o of outcomes) {
           lines.push(`  • ${o.market_ticker}: ${o.model_probability}`);
