@@ -369,13 +369,14 @@ export class OctagonClient {
     // from the per-outcome breakdown before falling back to event-level
     // values. The event-level model_probability is typically the first
     // outcome's value, not the one for the market we're analyzing. The
-    // Reports API envelope carries `outcome_probabilities` (array); older
-    // cached shapes carry `outcome_probabilities_json` (JSON string).
+    // Reports API carries the pinned version's `outcome_probabilities_json`
+    // at the top level; older envelopes carried `outcome_probabilities`
+    // (array) or `outcome_probabilities_json` on `versions[0]`.
     let modelProb: number | null = null;
     let marketProb: number | null = null;
     let provenance: ModelProvenance | null = null;
     const src = source as Record<string, unknown>;
-    const outcomeJson = src.outcome_probabilities ?? src.outcome_probabilities_json;
+    const outcomeJson = parsed.outcome_probabilities_json ?? src.outcome_probabilities ?? src.outcome_probabilities_json;
     if (outcomeJson != null) {
       try {
         const outcomes = typeof outcomeJson === 'string'

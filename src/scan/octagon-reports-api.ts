@@ -21,10 +21,9 @@ const GET_RETRY_STATUS = [502, 503, 504, 522, 524];
 const GET_MAX_RETRIES = 3;
 const GET_RETRY_DELAYS = [5_000, 15_000, 30_000];
 
+/** One entry of `versions`: that run's headline only. The event is named on the response itself. */
 export interface ReportVersion {
   run_id: string;
-  event_ticker: string;
-  name: string;
   captured_at: string;
   analysis_last_updated: string;
   market_probability: number;
@@ -32,27 +31,24 @@ export interface ReportVersion {
   confidence_score: number;
   total_volume: number;
   key_takeaway: string;
-  outcome_probabilities?: Array<{
-    market_ticker: string;
-    outcome_name?: string;
-    model_probability: number;
-    market_probability: number;
-    /** Provenance of model_probability — see src/scan/model-independence.ts. */
-    model_probability_source?: string | null;
-    /** Evidence quality A-D; bounds how far the model may deviate from the anchor. */
-    evidence_grade?: string | null;
-  }> | null;
 }
 
 export interface ReportVersionsResponse {
   event_ticker: string;
   venue: 'kalshi' | 'polymarket';
+  /** The pinned version's event name. */
+  name: string | null;
   requested_url: string | null;
   versions: ReportVersion[];
   /** Populated only when a `version` was requested and resolved. */
   markdown_report: string | null;
   /** The run `markdown_report` corresponds to; null when no body requested. */
   run_id: string | null;
+  /**
+   * The pinned version's per-outcome rows, as a JSON string: market_ticker, outcome_name,
+   * model_probability / market_probability (0-100), model_probability_source, evidence_grade, …
+   */
+  outcome_probabilities_json: string | null;
 }
 
 export interface ReportRunStatus {
