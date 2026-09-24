@@ -281,6 +281,7 @@ describe('OctagonClient', () => {
       const report = client.parseReport(json, 'KXPRESNOMR-28-JDV', 'KXPRESNOMR-28', 'cache');
       expect(report.modelProb).toBeCloseTo(0.3769, 4);
       expect(report.marketProb).toBeCloseTo(0.37, 4);
+      expect(report.contractSnapshot).toBe(JSON.parse(json).outcome_probabilities_json);
     });
 
     test('handles outcome_probabilities_json as array (not string) with case-insensitive ticker match', () => {
@@ -300,6 +301,8 @@ describe('OctagonClient', () => {
       const report = client.parseReport(json, 'kxpresnomr-28-jdv', 'KXPRESNOMR-28', 'cache');
       expect(report.modelProb).toBeCloseTo(0.3769, 4);
       expect(report.marketProb).toBeCloseTo(0.37, 4);
+      // Stored as JSON text, not String(array) ("[object Object],…").
+      expect(JSON.parse(report.contractSnapshot)).toEqual(JSON.parse(json).versions[0].outcome_probabilities_json);
     });
 
     test('falls back to event-level probability when ticker not in outcome_probabilities_json', () => {

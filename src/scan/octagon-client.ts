@@ -440,7 +440,12 @@ export class OctagonClient {
       catalysts: this.parseCatalysts(source.catalysts) ?? defaults.catalysts,
       sources: this.parseSources(source.sources) ?? defaults.sources,
       resolutionHistory: String(source.resolutionHistory ?? source.resolution_history ?? defaults.resolutionHistory),
-      contractSnapshot: String(source.contractSnapshot ?? source.contract_snapshot ?? source.outcome_probabilities_json ?? defaults.contractSnapshot),
+      // The outcome rows as found above (top-level first, then versions[0]), kept as JSON text.
+      contractSnapshot: String(
+        source.contractSnapshot ?? source.contract_snapshot
+          ?? (outcomeJson == null || typeof outcomeJson === 'string' ? outcomeJson : JSON.stringify(outcomeJson))
+          ?? defaults.contractSnapshot
+      ),
     };
   }
 
