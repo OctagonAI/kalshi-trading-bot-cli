@@ -1,18 +1,17 @@
 /**
  * Trader Trust scorecard.
  *
- * Surfaces Octagon's Trust Index from the `trader_trust_json` field on
- * /v1/predictions/events/{event_ticker}. Card shape: trader_dashboard_lean_v1.14.
+ * Surfaces Octagon's Trust Index from the Reports API's trust endpoint,
+ * /v1/predictions/reports/kalshi/{event_ticker}/trust.
  *
  * Views:
- *   - kalshi trust <event-ticker>                  → Trust Index (the `underwriting` block)
+ *   - kalshi trust <event-ticker>                  → Trust Index (score + profile)
  *   - kalshi trust <event-ticker> --verbose        → …plus per-contract market quality
  *   - kalshi trust <event-ticker> --market <mkt>   → single-market detail card
  *
- * The Trust Index mirrors the Octagon UI: an overall score
- * (underwriting.underwriting_score) blended from an Integrity axis and a Trade
- * quality axis, then a profile of the three integrity pillars and the three
- * event-level trade-quality components.
+ * The Trust Index mirrors the Octagon UI: an overall score blended from an
+ * Integrity axis and a Trade quality axis, then a profile of the three
+ * integrity pillars and the three event-level trade-quality components.
  *
  * Four per-market scores, each in [0, 100] and all HIGHER IS BETTER:
  *   - market_quality       (overall composite)
@@ -20,116 +19,28 @@
  *   - move_quality
  *   - resolution_clarity
  *
- * Every score value is nullable — null means not applicable (e.g. no trades to
- * judge a move by) or suppressed for insufficient data. A null renders as "—",
- * never as 0. Prices inside the card are in cents.
+ * Any score can be null — not applicable (no recent move, no book) or too thin
+ * to publish. Nulls render as "—" rather than as a zero, which would read as a
+ * damning score rather than an absent one. Prices inside the card are in cents.
  *
- * trader_trust_json is null on reports generated before this calculation
- * shipped; the handler returns a clear "no scorecard yet" error rather than
- * crashing.
+ * The per-market cards come back only with expand=trade_quality, so they are
+ * requested only for the views that show them.
  */
 import { wrapSuccess, wrapError } from './json.js';
 import type { CLIResponse } from './json.js';
 import type { ParsedArgs } from './parse-args.js';
-import { fetchOctagonEventDirect } from '../scan/octagon-events-api.js';
+import {
+  fetchTrustIndex,
+  OctagonReportsApiError,
+  type TrustIndex,
+  type TrustIndexResponse,
+  type TrustMarket,
+  type TrustPillar,
+} from '../scan/octagon-reports-api.js';
 import { formatTable } from './scan-formatters.js';
 import { theme } from '../theme.js';
 
-/** A raw fact backing the score; shown with --verbose. */
-export interface TrustEvidence {
-  text: string;
-  metric?: string;
-  value?: unknown;
-  window?: string;
-  comparison?: string;
-}
-
-export interface TrustScore {
-  value: number | null; // 0-100, null when not applicable or suppressed
-  label: string;
-  confidence: 'low' | 'medium' | 'high' | 'insufficient';
-  suppressed: boolean;
-  not_applicable: boolean;
-  /** Pre-rendered "why" sentences, most important first. */
-  drivers: string[];
-  evidence?: TrustEvidence[];
-  warning?: string;
-}
-
-export interface TrustMarket {
-  market_ticker: string;
-  title: string;
-  is_primary: boolean;
-  lifecycle_status?: string;
-  fair_cents?: number | null;
-  best_bid_cents?: number | null;
-  best_ask_cents?: number | null;
-  spread_cents?: number | null;
-  scores: {
-    market_quality: TrustScore;
-    liquidity: TrustScore;
-    move_quality: TrustScore;
-    resolution_clarity: TrustScore;
-  };
-}
-
-/** One pillar of the underwriting profile (e.g. information_fairness). */
-export interface UnderwritingPillar {
-  score: number | null;
-  label: string;
-  summary: string;
-  factors: string[];
-}
-
-export interface Underwriting {
-  calculation_version: string;
-  profile_version: string;
-  underwriting_score: number | null;
-  underwriting_label: string;
-  manipulation_resistance?: UnderwritingPillar;
-  information_fairness?: UnderwritingPillar;
-  settlement_reliability?: UnderwritingPillar;
-  market_quality?: UnderwritingPillar;
-  integrity_axis_score: number | null;
-  integrity_axis_label: string;
-  caps_detail?: unknown[];
-}
-
-export interface TraderTrustCard {
-  calculation_version: string;
-  computed_at: string;
-  event_ticker: string;
-  venue?: string;
-  event?: {
-    components?: {
-      event_liquidity?: number | null;
-      event_liquidity_label?: string;
-      event_move_quality?: number | null;
-      event_move_quality_label?: string;
-      event_rule_clarity?: number | null;
-      event_resolution?: string;
-    };
-  };
-  integrity?: {
-    structure?: { evidence?: Array<{ text: string }> };
-    /** Integrity screens (detectors), keyed by name. */
-    scores?: Record<string, TrustScore>;
-  };
-  underwriting?: Underwriting;
-  markets: TrustMarket[];
-}
-
-/**
- * Axis weights by underwriting profile. They are not in the payload — the
- * Octagon UI hard-codes them — but for v0 they reproduce underwriting_blend
- * (0.8 × integrity + 0.2 × trade quality). Unknown profiles show no weights
- * rather than stale ones.
- */
-const PROFILE_WEIGHTS: Record<string, { integrity: number; trade: number }> = {
-  underwriting_profile_v0: { integrity: 80, trade: 20 },
-};
-
-/** Color a 0-100 score (higher = better); null renders as a muted dash. */
+/** Color a 0-100 score. Every score in this card is higher-is-better. */
 function colorScore(value: number | null | undefined): string {
   if (value === null || value === undefined) return theme.muted('  —');
   const str = value.toFixed(0).padStart(3);
@@ -138,10 +49,10 @@ function colorScore(value: number | null | undefined): string {
   return theme.error(str);
 }
 
-// Underwriting thresholds differ per axis (40 is "High Risk" for one pillar and
-// "Mixed" for another), so the label, not the number, decides the color.
-const GOOD_LABELS = new Set(['Strong', 'Clear', 'Tradeable', 'Confirmed']);
-const BAD_LABELS = new Set(['High Risk', 'Very thin', 'Very weak']);
+// Thresholds differ per axis (40 is "High Risk" for one pillar and "Mixed" for
+// another), so the label, not the number, decides the color.
+const GOOD_LABELS = new Set(['Strong', 'Good', 'Clear', 'Tradeable', 'Confirmed']);
+const BAD_LABELS = new Set(['High Risk', 'Avoid', 'Very thin', 'Very weak']);
 
 function colorByLabel(text: string, label: string): string {
   if (GOOD_LABELS.has(label)) return theme.success(text);
@@ -157,66 +68,60 @@ function scoreCell(value: number | null | undefined, label = '', labelWidth = 0)
 
 /** Output shape for both views (machine-readable). */
 export type TrustResult =
-  | { kind: 'table'; card: TraderTrustCard; event_name: string | null; verbose: boolean }
-  | { kind: 'detail'; card: TraderTrustCard; market: TrustMarket; verbose: boolean };
+  | { kind: 'table'; trust: TrustIndexResponse; verbose: boolean }
+  | { kind: 'detail'; trust: TrustIndexResponse; market: TrustMarket; verbose: boolean };
 
 export async function handleTrust(args: ParsedArgs): Promise<CLIResponse<TrustResult>> {
   const eventTicker = args.positionalArgs[0]?.toUpperCase();
   if (!eventTicker) {
     return wrapError('trust', 'MISSING_EVENT', 'Usage: trust <event_ticker> [--market <market_ticker>] [--verbose]');
   }
+  const needsMarkets = args.verbose || Boolean(args.market);
 
-  let event;
+  let trust: TrustIndexResponse;
   try {
-    event = await fetchOctagonEventDirect(eventTicker);
+    trust = await fetchTrustIndex(eventTicker, { expand: needsMarkets ? ['trade_quality'] : [] });
   } catch (err) {
+    if (err instanceof OctagonReportsApiError && err.statusCode === 404) {
+      if (err.code === 'trust_index_not_found') {
+        return wrapError(
+          'trust',
+          'NO_SCORECARD',
+          `No trust scorecard for ${eventTicker} yet. The Trust Index may not have run for this event's latest report — try again after the next Octagon refresh.`,
+        );
+      }
+      return wrapError('trust', 'EVENT_NOT_FOUND', `No Octagon report for event ${eventTicker}.`);
+    }
     return wrapError('trust', 'OCTAGON_ERROR', err instanceof Error ? err.message : String(err));
   }
-  if (!event) {
-    return wrapError('trust', 'EVENT_NOT_FOUND', `No Octagon record for event ${eventTicker}.`);
-  }
-  if (!event.trader_trust_json) {
-    return wrapError(
-      'trust',
-      'NO_SCORECARD',
-      `No trust scorecard for ${eventTicker} yet. The Trader Trust calculation may not have run for this event — try again after the next Octagon refresh.`,
-    );
-  }
 
-  let card: TraderTrustCard;
-  try {
-    card = JSON.parse(event.trader_trust_json) as TraderTrustCard;
-  } catch (err) {
-    return wrapError(
-      'trust',
-      'PARSE_ERROR',
-      `Octagon returned malformed trader_trust_json for ${eventTicker}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  if (!Array.isArray(card.markets) || card.markets.length === 0) {
-    return wrapError('trust', 'EMPTY_SCORECARD', `Trust scorecard for ${eventTicker} has no markets.`);
+  if (!needsMarkets) return wrapSuccess('trust', { kind: 'table', trust, verbose: false });
+
+  const markets = trust.trust_index.profile.trade_quality.markets ?? [];
+  if (markets.length === 0) {
+    return wrapError('trust', 'EMPTY_SCORECARD', `Trust scorecard for ${eventTicker} has no scored markets.`);
   }
 
   // Single-market detail view
   if (args.market) {
     const wanted = args.market.toUpperCase();
-    const market = card.markets.find((m) => m.market_ticker.toUpperCase() === wanted);
+    const market = markets.find((m) => m.market_ticker.toUpperCase() === wanted);
     if (!market) {
       return wrapError(
         'trust',
         'MARKET_NOT_IN_SCORECARD',
-        `Market ${wanted} is not in the trust scorecard for ${eventTicker}. Run \`trust ${eventTicker}\` to see the available markets.`,
+        `Market ${wanted} is not in the trust scorecard for ${eventTicker}. Run \`trust ${eventTicker} --verbose\` to see the available markets.`,
       );
     }
-    return wrapSuccess('trust', { kind: 'detail', card, market, verbose: args.verbose });
+    return wrapSuccess('trust', { kind: 'detail', trust, market, verbose: args.verbose });
   }
 
-  return wrapSuccess('trust', { kind: 'table', card, event_name: event.name ?? null, verbose: args.verbose });
+  return wrapSuccess('trust', { kind: 'table', trust, verbose: true });
 }
 
 export function formatTrustHuman(result: TrustResult): string {
-  if (result.kind === 'table') return formatTrustIndex(result.card, result.event_name, result.verbose);
-  return formatTrustDetail(result.card, result.market, result.verbose);
+  if (result.kind === 'table') return formatTrustIndex(result.trust, result.verbose);
+  return formatTrustDetail(result.trust, result.market, result.verbose);
 }
 
 const SCORE_KEYS: Array<keyof TrustMarket['scores']> = [
@@ -233,69 +138,71 @@ const SCORE_HEADER_LABELS: Record<keyof TrustMarket['scores'], string> = {
   resolution_clarity: 'Resol.',
 };
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
-}
-
 function fmtCents(v: number | null | undefined): string {
   return v === null || v === undefined ? '—' : `${Number(v.toFixed(1))}¢`;
 }
 
-function formatTrustIndex(card: TraderTrustCard, eventName: string | null, verbose: boolean): string {
+function fmtComputedAt(ti: TrustIndex): string {
+  return `${ti.computed_at.slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function formatTrustIndex(trust: TrustIndexResponse, verbose: boolean): string {
+  const ti = trust.trust_index;
   const lines: string[] = [];
-  const title = eventName ? ` · ${eventName}` : '';
-  lines.push(theme.bold(`Trust Index — ${card.event_ticker}${title}`));
+  lines.push(theme.bold(`Trust Index — ${trust.event_ticker}`));
   lines.push(theme.muted('Trust Index combines Integrity and Trade quality.'));
   lines.push('');
-
-  const uw = card.underwriting;
-  if (uw) {
-    lines.push(...formatUnderwriting(card, uw));
-  } else {
-    lines.push(`  No Trust Index in the scorecard for ${card.event_ticker} yet.`);
-  }
+  lines.push(...formatScorecard(trust));
   lines.push('');
 
   if (verbose) {
-    lines.push(...formatPerContract(card));
+    lines.push(...formatPerContract(trust));
     lines.push('');
   }
 
-  const version = uw?.calculation_version ?? card.calculation_version;
-  lines.push(theme.muted(`  Calculation ${version}  ·  Computed ${card.computed_at.slice(0, 16).replace('T', ' ')} UTC`));
-  if (!verbose) lines.push(theme.muted(`  Per-contract market quality: trust ${card.event_ticker} --verbose`));
-  lines.push(theme.muted(`  Drill into one market: trust ${card.event_ticker} --market <market_ticker> [--verbose]`));
+  lines.push(theme.muted(`  Calculation ${ti.version}  ·  Computed ${fmtComputedAt(ti)}`));
+  if (!verbose) lines.push(theme.muted(`  Per-contract market quality: trust ${trust.event_ticker} --verbose`));
+  lines.push(theme.muted(`  Drill into one market: trust ${trust.event_ticker} --market <market_ticker> [--verbose]`));
   return lines.join('\n');
 }
 
-function formatUnderwriting(card: TraderTrustCard, uw: Underwriting): string[] {
+function formatScorecard(trust: TrustIndexResponse): string[] {
+  const ti = trust.trust_index;
+  const { integrity, trade_quality: trade } = ti.profile;
   const lines: string[] = [];
 
   // Headline score, with a bar standing in for the UI's gauge
-  const venue = card.venue ? ` · ${card.venue.toUpperCase()}` : '';
-  lines.push(`  ${gauge(uw.underwriting_score, uw.underwriting_label)}  ${scoreCell(uw.underwriting_score, uw.underwriting_label)}`);
-  lines.push(theme.muted(`  Octagon Trust Index${venue}`));
+  lines.push(`  ${gauge(ti.score, ti.label)}  ${scoreCell(ti.score, ti.label)}`);
+  lines.push(theme.muted(`  Octagon Trust Index · ${trust.venue.toUpperCase()}`));
 
-  const headline = card.integrity?.structure?.evidence?.[0]?.text;
-  if (headline) {
+  if (integrity.risk) {
     lines.push('');
-    lines.push(`  ${headline}`);
-    lines.push(`  ${theme.muted('Integrity risk ·')} Information exposure`);
+    lines.push(`  ${theme.muted('Integrity risk ·')} ${integrity.risk.label}`);
   }
 
   // How it adds up
-  const weights = PROFILE_WEIGHTS[uw.profile_version];
-  const weight = (pct: number | undefined) => theme.muted((pct === undefined ? '' : `${pct}% of score`).padEnd(14));
   lines.push('');
   lines.push(theme.muted('  HOW IT ADDS UP'));
-  lines.push(`  ${'Integrity'.padEnd(16)}${weight(weights?.integrity)}${scoreCell(uw.integrity_axis_score, uw.integrity_axis_label)}`);
-  lines.push(`  ${'Trade quality'.padEnd(16)}${weight(weights?.trade)}${scoreCell(uw.market_quality?.score, uw.market_quality?.label)}`);
-  const cost = tradeCostSentence(uw.market_quality?.factors ?? []);
+  lines.push(`  ${'Integrity'.padEnd(30)}${scoreCell(integrity.score, integrity.label ?? '')}`);
+  lines.push(`  ${'Trade quality'.padEnd(30)}${scoreCell(trade.score, trade.label ?? '')}`);
+  const cost = tradeCostSentence(trade.factors);
   if (cost) lines.push(`    ${cost}`);
   lines.push(theme.muted(`  ${'─'.repeat(46)}`));
-  lines.push(`  ${'= Trust score'.padEnd(30)}${scoreCell(uw.underwriting_score, uw.underwriting_label)}`);
-  if (uw.caps_detail && uw.caps_detail.length > 0) {
-    lines.push(`  ${theme.warning('Caps applied:')} ${uw.caps_detail.map(formatEvidenceValue).join('; ')}`);
+  const uncapped = ti.uncapped_score != null && ti.uncapped_score !== ti.score
+    ? theme.muted(`  (${ti.uncapped_score} before caps)`)
+    : '';
+  lines.push(`  ${'= Trust score'.padEnd(30)}${scoreCell(ti.score, ti.label)}${uncapped}`);
+  if (ti.caps.length > 0) {
+    lines.push(`  ${theme.warning('Caps applied:')} ${ti.caps.map(formatCap).join('; ')}`);
+  }
+  if (ti.floors_breached.length > 0) {
+    const pillarName = (key: string) => integrity.breakdown.find((p) => p.key === key)?.name ?? key;
+    const breaches = ti.floors_breached.map((b) => `${pillarName(b.key)} ${b.score} (floor ${b.floor})`);
+    lines.push(`  ${theme.warning('Below safety floor:')} ${breaches.join('; ')}`);
   }
   lines.push(theme.muted('  Weighted blend with hard caps — a critically weak safety pillar, or a severe'));
   lines.push(theme.muted('  trading anomaly, caps the total regardless of the rest.'));
@@ -303,42 +210,33 @@ function formatUnderwriting(card: TraderTrustCard, uw: Underwriting): string[] {
   // Trust profile
   lines.push('');
   lines.push(theme.muted('  TRUST PROFILE'));
-  const counts = integrityCounts(card);
+  const counts = integrity.screen_counts
+    ? `${integrity.screen_counts.run} screens run · ${integrity.screen_counts.not_applicable} don't apply · ${integrity.screen_counts.awaiting_data} awaiting data`
+    : null;
   lines.push(`  ${theme.bold('Integrity')}${counts ? `   ${theme.muted(counts)}` : ''}`);
-  lines.push(pillarRow('Market integrity', uw.manipulation_resistance));
-  lines.push(pillarRow('Info fairness', uw.information_fairness));
-  lines.push(pillarRow('Resolution quality', uw.settlement_reliability));
-  const c = card.event?.components;
+  for (const pillar of integrity.breakdown) lines.push(pillarRow(pillar));
   lines.push(`  ${theme.bold('Trade quality')}`);
-  lines.push(profileRow('Liquidity', c?.event_liquidity, c?.event_liquidity_label));
-  lines.push(profileRow('Move quality', c?.event_move_quality, c?.event_move_quality_label));
-  lines.push(profileRow('Rule clarity', c?.event_rule_clarity, c?.event_resolution));
+  for (const c of trade.breakdown) lines.push(profileRow(c.name, c.score, c.label));
   return lines;
 }
 
-function gauge(value: number | null, label: string): string {
+function formatCap(cap: TrustIndex['caps'][number]): string {
+  return cap.ceiling === null ? cap.name : `${cap.name} (capped at ${cap.ceiling})`;
+}
+
+function gauge(value: number, label: string): string {
   const width = 30;
-  const filled = value === null ? 0 : Math.round((value / 100) * width);
+  const filled = Math.round((value / 100) * width);
   return colorByLabel('█'.repeat(filled), label) + theme.muted('░'.repeat(width - filled));
 }
 
-function profileRow(name: string, value: number | null | undefined, label: string | undefined, summary?: string): string {
+function profileRow(name: string, value: number | null, label: string | null, summary?: string | null): string {
   const tail = summary ? `  ${theme.muted(summary)}` : '';
-  return `    ${name.padEnd(20)}${scoreCell(value, label ?? '', 10)}${tail}`.trimEnd();
+  return `    ${name.padEnd(24)}${scoreCell(value, label ?? '', 10)}${tail}`.trimEnd();
 }
 
-function pillarRow(name: string, pillar: UnderwritingPillar | undefined): string {
-  return profileRow(name, pillar?.score, pillar?.label, pillar?.summary);
-}
-
-/** "4 screens run · 3 don't apply · 3 awaiting data" over the integrity detectors. */
-function integrityCounts(card: TraderTrustCard): string | null {
-  const screens = Object.values(card.integrity?.scores ?? {});
-  if (screens.length === 0) return null;
-  const run = screens.filter((s) => s.value !== null).length;
-  const na = screens.filter((s) => s.not_applicable).length;
-  const waiting = screens.filter((s) => s.suppressed).length;
-  return `${run} screens run · ${na} don't apply · ${waiting} awaiting data`;
+function pillarRow(pillar: TrustPillar): string {
+  return profileRow(pillar.name, pillar.score, pillar.label, pillar.summary);
 }
 
 /** Turn the "$1,000 order: …" trade-quality factor into the UI's sentence. */
@@ -352,72 +250,75 @@ function tradeCostSentence(factors: string[]): string | null {
     : `Includes the cost to trade: a $1,000 order costs ${rest}.`;
 }
 
-function formatPerContract(card: TraderTrustCard): string[] {
+function formatPerContract(trust: TrustIndexResponse): string[] {
+  const trade = trust.trust_index.profile.trade_quality;
   // Sort by market quality desc (unscored last); the best markets surface first.
-  const quality = (m: TrustMarket) => m.scores?.market_quality?.value ?? -1;
-  const sorted = card.markets.slice().sort((a, b) => quality(b) - quality(a));
+  const quality = (m: TrustMarket) => m.scores.market_quality?.score ?? -1;
+  const sorted = (trade.markets ?? []).slice().sort((a, b) => quality(b) - quality(a));
   const rows: string[][] = sorted.map((m) => [
     m.is_primary ? '*' : ' ',
     m.market_ticker,
-    truncate(m.title, 30),
-    colorScore(m.scores?.market_quality?.value),
-    theme.muted(m.scores?.market_quality?.label ?? ''),
+    truncate(m.title ?? '', 30),
+    colorScore(m.scores.market_quality?.score),
+    theme.muted(m.scores.market_quality?.label ?? ''),
   ]);
-  return [
+  const lines = [
     theme.muted('  PER-CONTRACT MARKET QUALITY'),
     formatTable(['', 'Market', 'Title', 'Quality', 'Label'], rows),
     theme.muted('  * = primary outcome.  Higher is better; — = not scored (not applicable or insufficient data).'),
   ];
+  const ex = trade.exclusions;
+  if (ex && ex.total > 0) {
+    const reasons = [
+      ex.terminal_lifecycle ? `${ex.terminal_lifecycle} closed` : null,
+      ex.below_volume_floor ? `${ex.below_volume_floor} below volume floor` : null,
+      ex.no_ticker ? `${ex.no_ticker} without a ticker` : null,
+    ].filter(Boolean).join(', ');
+    lines.push(theme.muted(`  ${ex.total} market${ex.total === 1 ? '' : 's'} left out of the read${reasons ? ` (${reasons})` : ''}.`));
+  }
+  return lines;
 }
 
-function formatTrustDetail(card: TraderTrustCard, market: TrustMarket, verbose: boolean): string {
+function formatTrustDetail(trust: TrustIndexResponse, market: TrustMarket, verbose: boolean): string {
+  const ti = trust.trust_index;
   const lines: string[] = [];
   const primaryMark = market.is_primary ? ' (primary)' : '';
   lines.push(`Trader Trust — ${market.market_ticker}${primaryMark}`);
-  lines.push(`  ${market.title}`);
-  lines.push(`  Event ${card.event_ticker}  ·  Calculation ${card.calculation_version}  ·  Computed ${card.computed_at.slice(0, 16).replace('T', ' ')} UTC`);
-  lines.push(`  Fair ${fmtCents(market.fair_cents)}  ·  Bid ${fmtCents(market.best_bid_cents)} / Ask ${fmtCents(market.best_ask_cents)}  ·  Spread ${fmtCents(market.spread_cents)}`);
+  if (market.title) lines.push(`  ${market.title}`);
+  lines.push(`  Event ${trust.event_ticker}  ·  Calculation ${ti.version}  ·  Computed ${fmtComputedAt(ti)}`);
+  if (market.last_trade_cents !== null) lines.push(`  ${theme.muted(`Last trade ${fmtCents(market.last_trade_cents)}`)}`);
   lines.push('');
 
   for (const key of SCORE_KEYS) {
-    const score = market.scores?.[key];
+    const score = market.scores[key];
     const label = SCORE_HEADER_LABELS[key].padEnd(10);
     if (!score) {
       lines.push(`  ${label}  ${colorScore(null)}      ${theme.muted('not reported')}`);
       lines.push('');
       continue;
     }
-    const valueStr = score.value === null ? `${colorScore(null)}    ` : `${colorScore(score.value)}/100`;
-    const why = score.value !== null ? ''
-      : score.not_applicable ? ' (not applicable)'
-      : score.suppressed ? ' (insufficient data)' : '';
-    lines.push(`  ${label}  ${valueStr}  ${theme.muted(score.label)}${why}`);
+    const why = score.score !== null ? ''
+      : score.not_applicable ? ' (not applicable)' : ' (insufficient data)';
+    const valueStr = score.score === null ? `${colorScore(null)}    ` : `${colorScore(score.score)}/100`;
+    lines.push(`  ${label}  ${valueStr}  ${theme.muted(score.label ?? '')}${why}`);
     if (score.warning) lines.push(`      ${theme.warning(score.warning)}`);
     for (const d of score.drivers.slice(0, 3)) {
       lines.push(`      • ${d}`);
     }
     if (verbose) {
-      const evidence = score.evidence ?? [];
-      if (evidence.length > 0) {
+      if (score.evidence.length > 0) {
         lines.push(theme.muted(`      Evidence:`));
-        for (const e of evidence) lines.push(theme.muted(`        ${formatEvidence(e)}`));
+        for (const e of score.evidence) {
+          const window = e.window ? ` [${e.window}]` : '';
+          lines.push(theme.muted(`        ${e.text}${window}`));
+        }
       }
-      lines.push(theme.muted(`      Confidence: ${score.confidence}`));
+      for (const [check, result] of Object.entries(score.checks ?? {})) {
+        lines.push(theme.muted(`      Check ${check}: ${result}`));
+      }
+      if (score.confidence) lines.push(theme.muted(`      Confidence: ${score.confidence}`));
     }
     lines.push('');
   }
   return lines.join('\n');
-}
-
-function formatEvidence(e: TrustEvidence): string {
-  if (!e.metric) return e.text;
-  const window = e.window ? ` (${e.window})` : '';
-  return `${e.metric}: ${formatEvidenceValue(e.value)}${window}`;
-}
-
-function formatEvidenceValue(v: unknown): string {
-  if (v === null || v === undefined) return '—';
-  if (typeof v === 'number') return v.toString();
-  if (typeof v === 'string') return v;
-  try { return JSON.stringify(v); } catch { return String(v); }
 }

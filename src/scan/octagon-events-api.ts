@@ -47,10 +47,8 @@ export interface OctagonEventEntry {
    * Null on reports generated before this shipped — callers must guard.
    */
   trader_trust_subtitle?: string | null;
-  /** Pre-rendered HTML; the CLI ignores this and reads trader_trust_json. */
+  /** Pre-rendered HTML; the CLI ignores this. The Trust Index comes from the Reports API. */
   trader_trust_richtext?: string | null;
-  /** JSON-encoded string. See TraderTrustCard in src/commands/trust.ts. */
-  trader_trust_json?: string | null;
 }
 
 interface EventsPage {
