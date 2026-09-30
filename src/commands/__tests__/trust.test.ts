@@ -246,9 +246,9 @@ describe('handleTrust', () => {
 describe('formatTrustHuman — Trust Index view', () => {
   test('shows the overall score, how it adds up, and the trust profile', () => {
     const out = render({ kind: 'table', trust: makeTrust(), verbose: false });
-    expect(out).toContain('Trust Index — KX-EVT');
+    expect(out).toContain('Octagon Trust Index — KX-EVT');
     expect(out).toContain('Trust Index combines Integrity and Trade quality.');
-    expect(out).toContain('Octagon Trust Index · KALSHI');
+    expect(out).not.toContain('Octagon Trust Index · KALSHI');
     expect(out).toContain('Integrity risk · Information exposure');
     // How it adds up — no weights: they are not in the payload
     expect(out).not.toContain('% of score');
