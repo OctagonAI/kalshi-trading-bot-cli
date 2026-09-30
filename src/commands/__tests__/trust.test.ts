@@ -268,6 +268,16 @@ describe('formatTrustHuman — Trust Index view', () => {
     expect(out).toContain('Calculation trust_index_v2');
   });
 
+  test('the event title follows the ticker when the API sends one', () => {
+    const without = render({ kind: 'table', trust: makeTrust(), verbose: false });
+    expect(without).toContain('Octagon Trust Index — KX-EVT\n');
+
+    const trust = makeTrust();
+    trust.title = 'World Cup Winner';
+    const withTitle = render({ kind: 'table', trust, verbose: false });
+    expect(withTitle).toContain('Octagon Trust Index — KX-EVT · World Cup Winner');
+  });
+
   test('per-contract scores appear only with --verbose', () => {
     const plain = render({ kind: 'table', trust: makeTrust(), verbose: false });
     expect(plain).not.toContain('KX-EVT-A');

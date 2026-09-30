@@ -153,7 +153,8 @@ function truncate(s: string, max: number): string {
 function formatTrustIndex(trust: TrustIndexResponse, verbose: boolean): string {
   const ti = trust.trust_index;
   const lines: string[] = [];
-  lines.push(theme.bold(`Octagon Trust Index — ${trust.event_ticker}`));
+  const title = trust.title ? ` · ${trust.title}` : '';
+  lines.push(theme.bold(`Octagon Trust Index — ${trust.event_ticker}${title}`));
   lines.push(theme.muted('Trust Index combines Integrity and Trade quality.'));
   lines.push('');
   lines.push(...formatScorecard(trust));

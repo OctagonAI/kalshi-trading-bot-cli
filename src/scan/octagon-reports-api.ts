@@ -191,6 +191,8 @@ export interface TrustIndex {
 
 export interface TrustIndexResponse {
   event_ticker: string;
+  /** The event's name. Not yet served by the API; rendered once it is. */
+  title?: string | null;
   venue: 'kalshi' | 'polymarket';
   run_id: string;
   trust_index: TrustIndex;
