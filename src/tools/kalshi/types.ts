@@ -121,7 +121,6 @@ export interface KalshiPosition {
   position?: number;
   /** Net contracts as a fixed-point string ("10.00"): positive YES, negative NO. */
   position_fp?: string;
-  resting_orders_count: number;
   market_exposure: number;
   market_exposure_dollars?: string;
   realized_pnl: number;
