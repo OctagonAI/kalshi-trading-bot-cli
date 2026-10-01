@@ -223,6 +223,33 @@ describe('Kelly Sizing', () => {
   });
 });
 
+describe('fetchLiveBankroll', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(mockApiResponses)) {
+      delete mockApiResponses[key];
+    }
+    installApiMock();
+  });
+
+  afterEach(() => {
+    restoreApiMock();
+  });
+
+  test('counts open positions from position_fp, the only count production sends', async () => {
+    mockApiResponses['/portfolio/balance'] = { balance: 9862, portfolio_value: 130 };
+    mockApiResponses['/portfolio/positions'] = {
+      market_positions: [
+        { ticker: 'KXOPEN-26', position_fp: '1.00', market_exposure_dollars: '1.30' },
+        { ticker: 'KXCLOSED-26', position_fp: '0.00', market_exposure_dollars: '0.00' },
+      ],
+    };
+    const bankroll = await fetchLiveBankroll();
+    expect(bankroll.openPositions).toBe(1);
+    expect(bankroll.openExposure).toBe(130);
+    expect(bankroll.availableBankroll).toBe(9732);
+  });
+});
+
 describe('Risk Gate', () => {
   let db: Database;
 

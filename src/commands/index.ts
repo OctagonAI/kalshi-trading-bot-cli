@@ -1,6 +1,7 @@
 import { callKalshiApi } from '../tools/kalshi/api.js';
 import { buildV2Order, cancelOrderV2, placeOrderV2 } from '../tools/kalshi/orders-v2.js';
 import type { KalshiOrder, KalshiPosition } from '../tools/kalshi/types.js';
+import { netPosition } from '../tools/kalshi/positions.js';
 import type { KalshiBalanceResponse } from './formatters.js';
 import {
   formatBalance,
@@ -622,10 +623,7 @@ async function handlePortfolioSlash(subview?: string): Promise<CommandResult> {
     if (view === 'positions') {
       const data = await callKalshiApi('GET', '/portfolio/positions');
       const allPositions = (data.market_positions ?? data.positions ?? []) as KalshiPosition[];
-      const positions = allPositions.filter((p) => {
-        const pos = parseFloat(String(p.position ?? '0'));
-        return pos !== 0;
-      });
+      const positions = allPositions.filter((p) => netPosition(p) !== 0);
       return { output: formatPositions(positions) };
     }
 

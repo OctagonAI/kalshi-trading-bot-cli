@@ -143,12 +143,11 @@ export function formatPositions(positions: any[]): string {
       posStr,
       fmtDollars(pnl),
       fmtDollars(exposure),
-      String(p.resting_orders_count ?? 0),
     ];
   });
 
   return formatTable(
-    ['Ticker', 'Position', 'Realized P&L', 'Exposure', 'Orders'],
+    ['Ticker', 'Position', 'Realized P&L', 'Exposure'],
     rows
   );
 }

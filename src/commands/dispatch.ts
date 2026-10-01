@@ -18,6 +18,7 @@ import {
   formatOrders,
 } from './formatters.js';
 import type { KalshiOrder, KalshiPosition } from '../tools/kalshi/types.js';
+import { netPosition } from '../tools/kalshi/positions.js';
 import { buildHelp, validateTradeArgs } from './help.js';
 import { fetchMarketQuote } from './helpers.js';
 import { ensureIndex, forceRefreshIndex } from '../tools/kalshi/search-index.js';
@@ -411,10 +412,7 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
       if (subview === 'positions') {
         const data = await callKalshiApi('GET', '/portfolio/positions');
         const allPositions = (data.market_positions ?? data.positions ?? []) as KalshiPosition[];
-        const positions = allPositions.filter((p) => {
-          const pos = parseFloat(String(p.position_fp ?? p.position ?? '0'));
-          return pos !== 0;
-        });
+        const positions = allPositions.filter((p) => netPosition(p) !== 0);
         if (json) {
           console.log(JSON.stringify(wrapSuccess('portfolio:positions', { positions })));
         } else {

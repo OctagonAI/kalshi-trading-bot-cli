@@ -1,5 +1,6 @@
 import { callKalshiApi } from '../tools/kalshi/api.js';
 import type { KalshiPosition } from '../tools/kalshi/types.js';
+import { heldPosition, netPosition } from '../tools/kalshi/positions.js';
 import { handleAnalyze } from './analyze.js';
 import type { AnalyzeData } from './analyze.js';
 import { parsePriceField } from '../controllers/browse.js';
@@ -33,30 +34,20 @@ export async function reviewPortfolio(): Promise<PositionReview[]> {
   const data = await callKalshiApi('GET', '/portfolio/positions');
   const allPositions = (data.market_positions ?? data.positions ?? []) as KalshiPosition[];
 
-  const nonZero = allPositions.filter((p) => {
-    const pos = parseFloat(String(p.position ?? '0'));
-    return pos !== 0;
-  });
+  const nonZero = allPositions.filter((p) => netPosition(p) !== 0);
 
   if (nonZero.length === 0) return [];
 
   // Run analysis concurrently (cached — no Octagon credits consumed)
   // Pass preloaded position to avoid N+1 portfolio fetches inside handleAnalyze
   const results = await Promise.allSettled(
-    nonZero.map((p) => {
-      const rawPos = parseFloat(String(p.position ?? '0'));
-      const pos = rawPos !== 0
-        ? { direction: (rawPos > 0 ? 'yes' : 'no') as 'yes' | 'no', size: Math.abs(Math.round(rawPos)) }
-        : null;
-      return handleAnalyze(p.ticker, false, pos);
-    })
+    nonZero.map((p) => handleAnalyze(p.ticker, false, heldPosition(p)))
   );
 
   return results.map((result, i) => {
     const pos = nonZero[i];
-    const rawPos = parseFloat(String(pos.position ?? '0'));
-    const direction: 'yes' | 'no' = rawPos > 0 ? 'yes' : 'no';
-    const size = Math.abs(Math.round(rawPos));
+    // nonZero holds only rows with a non-zero net position.
+    const { direction, size } = heldPosition(pos)!;
 
     if (result.status === 'rejected') {
       const err = result.reason instanceof Error ? result.reason.message : String(result.reason);
@@ -158,7 +149,11 @@ export function formatReviewHuman(reviews: PositionReview[]): string {
     lines.push(`  ⚠  ${r.ticker}  ${dirLabel} ×${r.size}`);
     lines.push(`     Edge: ${edgePp}  |  ${r.reason}`);
     lines.push(`     → SELL ${dirLabel} @ ${r.closePriceCents}¢`);
-    lines.push(`     Command: /sell ${r.ticker} ${r.size} ${r.closePriceCents} ${r.direction}`);
+    // /sell takes whole contracts only; the CLI's `kalshi analyze` sell action
+    // (promptAnalyzeActions) places fractional counts.
+    lines.push(Number.isInteger(r.size)
+      ? `     Command: /sell ${r.ticker} ${r.size} ${r.closePriceCents} ${r.direction}`
+      : `     Command: kalshi analyze ${r.ticker}  (fractional size: /sell takes whole contracts; close it from analyze's sell action)`);
     if (r.analyzeError) {
       lines.push(`     ⚠ Analysis error: ${r.analyzeError}`);
     }
