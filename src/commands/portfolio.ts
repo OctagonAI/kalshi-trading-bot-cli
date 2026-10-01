@@ -55,7 +55,6 @@ export async function handlePortfolio(args: ParsedArgs): Promise<CLIResponse<Por
 
   // Get open positions with edge data
   let positionViews: PositionView[] = [];
-  let positionsCount = 0;
   try {
     const openPositions = getOpenPositions(db);
     const views = openPositions.map((pos) => {
@@ -72,9 +71,7 @@ export async function handlePortfolio(args: ParsedArgs): Promise<CLIResponse<Por
       };
     });
     positionViews = views;
-    positionsCount = openPositions.length;
   } catch (err) {
-    positionsCount = 0;
     warnings.push(`Positions unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
@@ -102,7 +99,9 @@ export async function handlePortfolio(args: ParsedArgs): Promise<CLIResponse<Por
           portfolioValue: bankroll.portfolioValue,
           openExposure: bankroll.openExposure,
           available: bankroll.availableBankroll,
-          positionsCount,
+          // From the venue, like the dollar lines above it: the table counts only
+          // positions this CLI opened, so it misses ones opened on kalshi.com.
+          positionsCount: bankroll.openPositions,
         }
       : null,
     riskSnapshot,
@@ -125,7 +124,7 @@ export async function handlePortfolio(args: ParsedArgs): Promise<CLIResponse<Por
             portfolio_value: bankroll.portfolioValue,
             open_exposure: bankroll.openExposure,
             available: bankroll.availableBankroll,
-            positions_count: positionsCount,
+            positions_count: bankroll.openPositions,
           },
         }
       : {}),

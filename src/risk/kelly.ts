@@ -5,6 +5,7 @@ import type {
   KalshiPosition,
 } from "../tools/kalshi/types.js";
 import { getBotSetting } from "../utils/bot-config.js";
+import { netPosition } from "../tools/kalshi/positions.js";
 
 export interface KellySizeParams {
   edge: number; // octagon_prob - market_prob (signed)
@@ -35,6 +36,8 @@ export interface LiveBankroll {
   portfolioValue: number; // cents
   openExposure: number; // cents
   availableBankroll: number; // cents
+  /** Markets with a non-zero net position on the venue, however they were opened. */
+  openPositions: number;
 }
 
 /**
@@ -70,8 +73,9 @@ export async function fetchLiveBankroll(): Promise<LiveBankroll> {
     return sum + (p.market_exposure ?? 0);
   }, 0);
   const availableBankroll = Math.max(0, cashBalance - openExposure);
+  const openPositions = positions.filter((p) => netPosition(p) !== 0).length;
 
-  return { cashBalance, portfolioValue, openExposure, availableBankroll };
+  return { cashBalance, portfolioValue, openExposure, availableBankroll, openPositions };
 }
 
 /** Parse a dollar-string or integer-cent price field to a decimal (0-1). */
