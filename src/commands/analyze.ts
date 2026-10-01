@@ -10,6 +10,7 @@ import { createOctagonInvoker } from '../scan/invoker.js';
 import * as readline from 'node:readline';
 import { callKalshiApi, KalshiApiError } from '../tools/kalshi/api.js';
 import type { KalshiMarket, KalshiEvent, KalshiOrder, KalshiPosition } from '../tools/kalshi/types.js';
+import { netPosition } from '../tools/kalshi/positions.js';
 import { openPosition, closePosition, getOpenPositions } from '../db/positions.js';
 import { logTrade } from '../db/trades.js';
 import { formatRawReport, parseMarketProb, parsePriceField } from '../controllers/browse.js';
@@ -349,7 +350,7 @@ export async function handleAnalyze(
       const positions = (posData.market_positions ?? posData.positions ?? []) as KalshiPosition[];
       const match = positions.find((p) => p.ticker === resolvedTicker);
       if (match) {
-        const rawPos = parseFloat(String(match.position ?? '0'));
+        const rawPos = netPosition(match);
         if (rawPos !== 0) {
           existingPosition = {
             direction: rawPos > 0 ? 'yes' : 'no',

@@ -117,8 +117,10 @@ export interface KalshiOrder {
 export interface KalshiPosition {
   ticker: string;
   event_ticker: string;
-  position: number;
-  position_fp?: number;
+  /** Legacy integer count; production no longer sends it. Read netPosition() instead. */
+  position?: number;
+  /** Net contracts as a fixed-point string ("10.00"): positive YES, negative NO. */
+  position_fp?: string;
   resting_orders_count: number;
   market_exposure: number;
   market_exposure_dollars?: string;
