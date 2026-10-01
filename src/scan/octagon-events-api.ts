@@ -51,6 +51,49 @@ export interface OctagonEventEntry {
   trader_trust_richtext?: string | null;
 }
 
+/** Normalized across venues; a determined market's market_probability is pinned at 0 or 100. */
+export type OctagonMarketStatus = 'active' | 'closed' | 'determined' | 'terminated';
+
+/**
+ * A market on the event detail endpoint. Probabilities are percentages (0-100),
+ * as on outcome_probabilities; bid/ask are prices per $1 contract (0-1).
+ */
+export interface OctagonEventMarket {
+  market_ticker: string;
+  outcome_name?: string | null;
+  model_probability: number | null;
+  market_probability: number | null;
+  model_probability_source?: string | null;
+  evidence_grade?: string | null;
+  volume?: number | null;
+  volume_24h?: number | null;
+  yes_bid: number | null;
+  yes_ask: number | null;
+  no_bid: number | null;
+  no_ask: number | null;
+  status: OctagonMarketStatus;
+}
+
+/**
+ * One event from GET /v1/predictions/events/{event_ticker}: the event as of one
+ * run (metadata, headline numbers, per-market quotes). Report bodies and the
+ * Trust Index come from the Reports API (octagon-reports-api.ts), so the report
+ * and trust fields of a list row are not on it.
+ */
+export type OctagonEventDetail = Omit<
+  OctagonEventEntry,
+  | 'current_state_summary_richtext'
+  | 'short_answer_richtext'
+  | 'executive_summary_richtext'
+  | 'trader_trust_subtitle'
+  | 'trader_trust_richtext'
+> & {
+  /** The venue's public page for the event. */
+  event_url?: string | null;
+  /** One row per outcome_probabilities row (same order); supersedes outcome_probabilities. */
+  markets?: OctagonEventMarket[] | null;
+};
+
 interface EventsPage {
   data: OctagonEventEntry[];
   next_cursor: string | null;
@@ -97,7 +140,7 @@ export async function fetchOctagonEventsPage(opts?: {
  * GET /v1/predictions/events/{event_ticker}. Returns null on 404.
  * Cheaper than `fetchOctagonEventByTicker` which scans paginated pages.
  */
-export async function fetchOctagonEventDirect(eventTicker: string): Promise<OctagonEventEntry | null> {
+export async function fetchOctagonEventDirect(eventTicker: string): Promise<OctagonEventDetail | null> {
   const apiKey = process.env.OCTAGON_API_KEY;
   if (!apiKey) throw new Error('OCTAGON_API_KEY not set');
   const resp = await fetchWithDeadline(`${EVENTS_API_BASE}/predictions/events/${encodeURIComponent(eventTicker)}`, {
@@ -108,7 +151,7 @@ export async function fetchOctagonEventDirect(eventTicker: string): Promise<Octa
     const body = await resp.text().catch(() => '');
     throw new Error(`Octagon event lookup ${resp.status}: ${body.slice(0, 200)}`);
   }
-  return (await resp.json()) as OctagonEventEntry;
+  return (await resp.json()) as OctagonEventDetail;
 }
 
 /**

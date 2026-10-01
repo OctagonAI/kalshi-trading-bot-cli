@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
+import { settle } from '../../__tests__/fake-timers';
 import {
   fetchLatestReportMarkdown,
   fetchReportRunStatus,
@@ -26,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   globalThis.fetch = realFetch;
 });
 
@@ -60,10 +62,11 @@ describe('fetchReportVersions', () => {
     let n = 0;
     responder = () => (++n === 1 ? json(503, { error: { code: 'service_unavailable', message: 'down' } })
       : json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [], markdown_report: null, run_id: null }));
-    const res = await fetchReportVersions('KXTEST-26');
+    jest.useFakeTimers();
+    const res = await settle(fetchReportVersions('KXTEST-26'));
     expect(res.versions).toEqual([]);
     expect(n).toBe(2);
-  }, 15_000);
+  });
 });
 
 describe('triggerReportGeneration', () => {
@@ -134,10 +137,11 @@ d4('524 resilience', () => {
     responder = () => (++n === 1
       ? new Response('gateway timeout', { status: 524 })
       : json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [], markdown_report: null, run_id: null }));
-    const res = await fetchReportVersions('KXTEST-26');
+    jest.useFakeTimers();
+    const res = await settle(fetchReportVersions('KXTEST-26'));
     e4(res.versions).toEqual([]);
     e4(n).toBe(2);
-  }, 15_000);
+  });
 
   t4('ambiguity classifier: gateway statuses yes, definite rejections no', () => {
     e4(isAmbiguousGenerationFailure(new OctagonReportsApiError(524, null, 'x'))).toBe(true);
@@ -248,10 +252,11 @@ d4('deadline during the body read', () => {
     responder = () => (++n === 1
       ? abortedBody(200)
       : json(200, { event_ticker: 'KXTEST-26', venue: 'kalshi', requested_url: null, versions: [], markdown_report: null, run_id: null }));
-    const res = await fetchReportVersions('KXTEST-26');
+    jest.useFakeTimers();
+    const res = await settle(fetchReportVersions('KXTEST-26'));
     e4(res.versions).toEqual([]);
     e4(n).toBe(2);
-  }, 15_000);
+  });
 
   t4('a generate POST whose body read times out enters recovery', async () => {
     let latestCalls = 0;

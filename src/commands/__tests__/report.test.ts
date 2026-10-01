@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
 import type { ParsedArgs } from '../parse-args.js';
 import { handleReport, formatReportHuman } from '../report.js';
+import type { OctagonEventDetail } from '../../scan/octagon-events-api.js';
 
 function makeArgs(o: Partial<ParsedArgs>): ParsedArgs {
   return {
@@ -27,6 +28,41 @@ function installFetchMock(handler: FetchHandler): void {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
+
+/** /predictions/events/{ref} after the slimming: no report prose or trust fields, plus event_url and markets[]. */
+const SLIM_EVENT_DETAIL = {
+  history_id: 41,
+  run_id: '1a9984cc-17b8-4d59-936b-ebaa0d0da5c5',
+  captured_at: '2026-09-23T17:53:00Z',
+  event_ticker: 'KXAAPLCEOCHANGE',
+  name: 'When will Tim Cook leave Apple?',
+  slug: 'kxaaplceochange',
+  series_category: 'Companies',
+  available_on_brokers: true,
+  mutually_exclusive: false,
+  analysis_last_updated: '2026-09-02T09:15:00Z',
+  confidence_score: 6,
+  model_probability: 30,
+  market_probability: 25,
+  edge_pp: 5,
+  expected_return: 0.2,
+  r_score: 1.1,
+  total_volume: 120_000,
+  total_open_interest: 40_000,
+  close_time: '2027-12-31T00:00:00Z',
+  key_takeaway: 'Succession planning is visible but not imminent.',
+  event_url: 'https://kalshi.com/markets/kxaaplceochange',
+  outcome_probabilities: [
+    { market_ticker: 'KXAAPLCEOCHANGE-T2027', outcome_name: 'Before 2027', model_probability: 30, market_probability: 25 },
+  ],
+  markets: [
+    {
+      market_ticker: 'KXAAPLCEOCHANGE-T2027', outcome_name: 'Before 2027', model_probability: 30, market_probability: 25,
+      model_probability_source: 'model', evidence_grade: 'B', volume: 120_000, volume_24h: 3_000,
+      yes_bid: 0.24, yes_ask: 0.26, no_bid: 0.74, no_ask: 0.76, status: 'active',
+    },
+  ],
+} satisfies OctagonEventDetail;
 
 describe('handleReport', () => {
   let originalFetch: typeof globalThis.fetch;
@@ -123,6 +159,41 @@ describe('handleReport', () => {
     expect(kalshiMarketCalls.length).toBeGreaterThan(0);
     expect(kalshiMarketCalls[0]).toContain('/markets/KXAAPLCEOCHANGE-T2027');
     expect(kalshiMarketCalls[0]).not.toMatch(/\/markets\/KXAAPLCEOCHANGE$/);
+  });
+
+  test('resolves title, analysis time and market from a slimmed event detail', async () => {
+    const kalshiMarketCalls: string[] = [];
+    installFetchMock((url) => {
+      if (url.includes('/v1/predictions/events/')) return jsonResponse(SLIM_EVENT_DETAIL);
+      if (url.match(/\/trade-api\/v2\/markets\/[^?/]+$/)) {
+        kalshiMarketCalls.push(url);
+        return jsonResponse({ market: { ticker: 'KXAAPLCEOCHANGE-T2027', event_ticker: 'KXAAPLCEOCHANGE' } });
+      }
+      if (url.includes('/trade-api/v2/events/')) {
+        return jsonResponse({ event: { series_ticker: 'KXAAPLCEOCHANGE' } });
+      }
+      if (url.includes('/trade-api/v2/series/')) {
+        return jsonResponse({ series: { title: 'Apple CEO Change' } });
+      }
+      if (url.includes('/predictions/reports/kalshi/')) {
+        return jsonResponse({
+          event_ticker: 'KXAAPLCEOCHANGE',
+          venue: 'kalshi',
+          requested_url: null,
+          versions: [{ run_id: 'run-1' }],
+          markdown_report: '# Report body',
+          run_id: 'run-1',
+        });
+      }
+      return jsonResponse({});
+    });
+    const resp = await handleReport(makeArgs({ positionalArgs: ['KXAAPLCEOCHANGE'] }));
+    expect(resp.ok).toBe(true);
+    if (!resp.ok) return;
+    expect(resp.data.title).toBe('When will Tim Cook leave Apple?');
+    expect(resp.data.modelRunAt).toBe('2026-09-02 09:15 UTC');
+    expect(kalshiMarketCalls[0]).toContain('/markets/KXAAPLCEOCHANGE-T2027');
+    expect(formatReportHuman(resp.data)).toContain('Report body updated at: 2026-09-02 09:15 UTC');
   });
 });
 
