@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { netPosition } from '../positions.js';
+import { heldPosition, netPosition } from '../positions.js';
 
 describe('netPosition', () => {
   test('reads the fixed-point string production sends', () => {
@@ -20,5 +20,23 @@ describe('netPosition', () => {
   test('neither field, or an unparseable one, reads as no position', () => {
     expect(netPosition({})).toBe(0);
     expect(netPosition({ position_fp: 'n/a' })).toBe(0);
+  });
+});
+
+describe('heldPosition', () => {
+  test('keeps fractional sizes instead of rounding them away', () => {
+    expect(heldPosition({ position_fp: '0.40' })).toEqual({ direction: 'yes', size: 0.4 });
+    expect(heldPosition({ position_fp: '-0.60' })).toEqual({ direction: 'no', size: 0.6 });
+    expect(heldPosition({ position_fp: '2.50' })).toEqual({ direction: 'yes', size: 2.5 });
+  });
+
+  test('whole positions read as before', () => {
+    expect(heldPosition({ position_fp: '3.00' })).toEqual({ direction: 'yes', size: 3 });
+    expect(heldPosition({ position: -2 })).toEqual({ direction: 'no', size: 2 });
+  });
+
+  test('a flat market holds nothing', () => {
+    expect(heldPosition({ position_fp: '0.00' })).toBeNull();
+    expect(heldPosition({})).toBeNull();
   });
 });
