@@ -24,7 +24,7 @@ import { auditTrail } from '../audit/index.js';
 import { OctagonClient } from '../scan/octagon-client.js';
 import { createOctagonInvoker } from '../scan/invoker.js';
 import { fetchOctagonEventDirect } from '../scan/octagon-events-api.js';
-import type { OctagonEventEntry } from '../scan/octagon-events-api.js';
+import type { OctagonEventDetail } from '../scan/octagon-events-api.js';
 import { normalizeKalshiInput, resolveMarket } from './analyze.js';
 import { callKalshiApi } from '../tools/kalshi/api.js';
 import { formatRawReport } from '../controllers/browse.js';
@@ -45,7 +45,7 @@ import { formatAge } from '../utils/time.js';
  *   3. The event_ticker itself, as a last-resort guess (a few one-market
  *      events use it as their market ticker too).
  */
-async function pickMarketTickerForInvoker(eventTicker: string, ev: OctagonEventEntry | null): Promise<string> {
+async function pickMarketTickerForInvoker(eventTicker: string, ev: OctagonEventDetail | null): Promise<string> {
   const outcomes = ev?.outcome_probabilities ?? [];
   if (outcomes.length > 0 && outcomes[0]?.market_ticker) return outcomes[0].market_ticker;
 
@@ -128,7 +128,7 @@ export async function handleReport(args: ParsedArgs): Promise<CLIResponse<Report
   // Kalshi's expected shape).
   let eventTicker: string | null = null;
   let title: string | null = null;
-  let octagonEvent: OctagonEventEntry | null = null;
+  let octagonEvent: OctagonEventDetail | null = null;
   let analysisLastUpdated: string | null = null;
   try {
     octagonEvent = await fetchOctagonEventDirect(input);
