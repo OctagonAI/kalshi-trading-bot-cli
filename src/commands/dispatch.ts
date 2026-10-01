@@ -412,7 +412,7 @@ export async function dispatch(args: ParsedArgs): Promise<void> {
         const data = await callKalshiApi('GET', '/portfolio/positions');
         const allPositions = (data.market_positions ?? data.positions ?? []) as KalshiPosition[];
         const positions = allPositions.filter((p) => {
-          const pos = parseFloat(String(p.position ?? '0'));
+          const pos = parseFloat(String(p.position_fp ?? p.position ?? '0'));
           return pos !== 0;
         });
         if (json) {
