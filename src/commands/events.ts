@@ -7,6 +7,7 @@ import {
   type OctagonEventEntry,
 } from '../scan/octagon-events-api.js';
 import { formatTable } from './scan-formatters.js';
+import { analysisPredatesCapture, formatAge, parseUtcTimestamp } from '../utils/time.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
@@ -17,6 +18,32 @@ function fmtVol(v: number | null | undefined): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
   return v.toFixed(0);
+}
+
+/** "2026-09-23 17:53 UTC" */
+function fmtUtcMinute(d: Date): string {
+  return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+/**
+ * When the numbers were captured, e.g. "2026-09-23 17:53 UTC (7d ago)". The
+ * event is a snapshot that can be weeks old, so this sits above every number.
+ * Adds the analysis date when a refresh carried an older analysis forward.
+ */
+function snapshotLabel(e: OctagonEventEntry): string | null {
+  const captured = parseUtcTimestamp(e.captured_at);
+  if (!captured) return null;
+  let label = `${fmtUtcMinute(captured)} (${formatAge(captured.getTime() / 1000)})`;
+  if (analysisPredatesCapture(e.captured_at, e.analysis_last_updated)) {
+    label += ` · analysis from ${parseUtcTimestamp(e.analysis_last_updated)!.toISOString().slice(0, 10)}`;
+  }
+  return label;
+}
+
+/** Compact capture age for the list, e.g. "3h", "7d". */
+function capturedAge(e: OctagonEventEntry): string {
+  const captured = parseUtcTimestamp(e.captured_at);
+  return captured ? formatAge(captured.getTime() / 1000).replace(/ ago$/, '') : '-';
 }
 
 export type EventsResult =
@@ -98,9 +125,10 @@ function formatEventList(events: OctagonEventEntry[], filteredFrom?: number): st
     `${e.edge_pp >= 0 ? '+' : ''}${e.edge_pp.toFixed(1)}pp`,
     fmtVol(e.total_volume),
     (e.close_time ?? '').slice(0, 10),
+    capturedAge(e),
   ]);
   lines.push(formatTable(
-    ['Event', 'Name', 'Category', 'Model', 'Market', 'Edge', 'Volume', 'Closes'],
+    ['Event', 'Name', 'Category', 'Model', 'Market', 'Edge', 'Volume', 'Closes', 'Captured'],
     rows,
   ));
   return lines.join('\n');
@@ -109,6 +137,8 @@ function formatEventList(events: OctagonEventEntry[], filteredFrom?: number): st
 function formatEventDetail(e: OctagonEventEntry): string {
   const lines: string[] = [];
   lines.push(`Event ${e.event_ticker} — ${e.name}`);
+  const snapshot = snapshotLabel(e);
+  if (snapshot) lines.push(`  Snapshot   ${snapshot}`);
   lines.push(`  Category   ${e.series_category}`);
   lines.push(`  Model      ${e.model_probability.toFixed(1)}%`);
   lines.push(`  Market     ${e.market_probability.toFixed(1)}%`);
