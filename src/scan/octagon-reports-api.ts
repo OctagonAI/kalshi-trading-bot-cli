@@ -238,33 +238,49 @@ function toApiError(status: number, body: string): OctagonReportsApiError {
 async function requestJson<T>(
   method: 'GET' | 'POST',
   path: string,
-  opts?: { retry?: boolean },
+  opts?: { retry?: boolean; deadline?: number },
 ): Promise<T> {
   const apiKey = requireApiKey();
   const maxRetries = opts?.retry ? GET_MAX_RETRIES : 0;
+  // Callers running under an overall deadline (report generation polling) pass
+  // it here: without it, each GET carries its own full REQUEST_TIMEOUT_MS plus
+  // 5/15/30s retry sleeps, so a failing API can outlast the caller's timeout by
+  // minutes. The error must say "timed out" — isAmbiguousGenerationFailure and
+  // recoverFromLatest's transient-failure classifier both match on that.
+  const deadline = opts?.deadline;
+  const timedOut = (): Error =>
+    new Error(`Octagon reports API request timed out (${method} ${path}): exceeded the caller's deadline`);
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    let remaining = deadline === undefined ? Number.POSITIVE_INFINITY : deadline - Date.now();
+    if (remaining <= 0) throw timedOut();
     if (attempt > 0) {
-      const delay = GET_RETRY_DELAYS[attempt - 1];
+      const delay = Math.min(GET_RETRY_DELAYS[attempt - 1], remaining);
       logger.info(`[reports-api] retrying in ${delay / 1000}s (attempt ${attempt + 1}/${maxRetries + 1})`);
       await new Promise((r) => setTimeout(r, delay));
+      // Recalculate after the sleep: a retry delay can consume the remaining
+      // budget, and the request timeout below must never outlive the deadline
+      // (CodeRabbit review on the deadline PR).
+      remaining = deadline === undefined ? Number.POSITIVE_INFINITY : deadline - Date.now();
+      if (remaining <= 0) throw timedOut();
     }
     // The deadline stays armed through the body read, so read the body inside
     // this try too. An abort there has to become the same "timed out" error:
     // GETs retry on it, and isAmbiguousGenerationFailure only recognises a POST
     // that may have started a run by that message.
+    const requestTimeout = Math.min(REQUEST_TIMEOUT_MS, remaining);
     let resp: Response;
     let body: string;
     try {
       resp = await fetchWithDeadline(`${baseUrl()}${path}`, {
         method,
         headers: { Authorization: `Bearer ${apiKey}` },
-      }, REQUEST_TIMEOUT_MS);
+      }, requestTimeout);
       body = await resp.text();
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        lastError = new Error(`Octagon reports API timed out after ${REQUEST_TIMEOUT_MS / 1000}s (${method} ${path})`);
+        lastError = new Error(`Octagon reports API timed out after ${Math.round(requestTimeout / 1000)}s (${method} ${path})`);
         if (attempt < maxRetries) continue;
         throw lastError;
       }
@@ -288,13 +304,13 @@ async function requestJson<T>(
  */
 export async function fetchReportVersions(
   eventTicker: string,
-  opts?: { version?: string },
+  opts?: { version?: string; deadline?: number },
 ): Promise<ReportVersionsResponse> {
   const qs = opts?.version ? `?version=${encodeURIComponent(opts.version)}` : '';
   return requestJson<ReportVersionsResponse>(
     'GET',
     `/predictions/reports/kalshi/${encodeURIComponent(eventTicker)}${qs}`,
-    { retry: true },
+    { retry: true, deadline: opts?.deadline },
   );
 }
 
@@ -324,8 +340,8 @@ export async function fetchTrustIndex(
   );
 }
 
-export async function fetchReportRunStatus(runId: string): Promise<ReportRunStatus> {
-  return requestJson<ReportRunStatus>('GET', `/predictions/reports/status/${encodeURIComponent(runId)}`, { retry: true });
+export async function fetchReportRunStatus(runId: string, deadline?: number): Promise<ReportRunStatus> {
+  return requestJson<ReportRunStatus>('GET', `/predictions/reports/status/${encodeURIComponent(runId)}`, { retry: true, deadline });
 }
 
 /**
@@ -378,14 +394,14 @@ export async function generateReportAndWait(
       `Generation POST failed ambiguously (${err instanceof Error ? err.message.slice(0, 80) : err}); ` +
       `watching ?version=latest for the run to land anyway...`,
     );
-    return recoverFromLatest(eventTicker, baselineRunId, pollInterval, timeoutMs, opts?.onProgress);
+    return recoverFromLatest(eventTicker, baselineRunId, pollInterval, timeoutMs, opts?.onProgress, Date.now() + timeoutMs);
   }
   opts?.onProgress?.(`Generation started (run ${accepted.run_id}). Polling every ${Math.round(pollInterval / 1000)}s...`);
 
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     await sleepUntil(pollInterval, deadline);
-    const status = await fetchReportRunStatus(accepted.run_id);
+    const status = await fetchReportRunStatus(accepted.run_id, deadline);
     if (status.status === 'completed') break;
     if (status.status === 'failed') {
       throw new Error(`Octagon report generation failed for ${eventTicker} (run ${accepted.run_id}). Credits are refunded automatically.`);
@@ -399,7 +415,7 @@ export async function generateReportAndWait(
     opts?.onProgress?.(`Still processing (run ${accepted.run_id})...`);
   }
 
-  const res = await fetchReportVersions(accepted.event_ticker || eventTicker, { version: accepted.run_id });
+  const res = await fetchReportVersions(accepted.event_ticker || eventTicker, { version: accepted.run_id, deadline });
   if (!res.markdown_report) {
     throw new Error(`Report run ${accepted.run_id} completed but no markdown was returned for ${eventTicker}.`);
   }
@@ -437,13 +453,14 @@ async function recoverFromLatest(
   pollInterval: number,
   timeoutMs: number,
   onProgress?: (msg: string) => void,
+  deadline?: number,
 ): Promise<{ markdown: string; runId: string; envelope: ReportVersionsResponse }> {
-  const deadline = Date.now() + timeoutMs;
+  const pollDeadline = deadline ?? Date.now() + timeoutMs;
   for (;;) {
-    await sleepUntil(pollInterval, deadline);
+    await sleepUntil(pollInterval, pollDeadline);
     let latest: ReportVersionsResponse | null = null;
     try {
-      latest = await fetchReportVersions(eventTicker, { version: 'latest' });
+      latest = await fetchReportVersions(eventTicker, { version: 'latest', deadline: pollDeadline });
     } catch (err) {
       // Transient gateway/timeout failures keep polling; definitive API
       // answers (401/403/404, malformed keys) will not improve with time.
@@ -456,7 +473,7 @@ async function recoverFromLatest(
       onProgress?.(`Recovered: fresh report landed as run ${newRun}.`);
       return { markdown: latest.markdown_report, runId: newRun, envelope: latest };
     }
-    if (Date.now() > deadline) {
+    if (Date.now() > pollDeadline) {
       throw new Error(
         `Octagon report generation for ${eventTicker} failed and no new version landed within ` +
         `${Math.round(timeoutMs / 1000)}s. If credits were charged for a failed run they are refunded automatically.`,
